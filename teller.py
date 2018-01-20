@@ -20,8 +20,6 @@ config = configparser.ConfigParser()
 if not config.has_section('general'):
     config.add_section('general')
 config.read(FILENAME_CONFIG)
-global password
-password = None
 
 
 def getLanguageConfig():
@@ -58,7 +56,7 @@ def _(key, *args):
         value = langConfig.get('language', key).replace('\\t', '    ')
         for arg in args:
             value = value.replace('%s', str(arg), 1)
-        return value
+        return value.encode('utf-8')
     return key
 
 
@@ -93,12 +91,12 @@ for i, arg in enumerate(sys.argv):
         pass
 
 
-def clean(input, *onlyParts):
+def getCleanOutput(input, *onlyParts):
     if anonymize:
         if onlyParts:
-            return input[:4].ljust(len(input), '*')
+            return input[:4].ljust(len(input), '*').encode('utf-8')
         return '*' * len(input)
-    return input
+    return input.encode('utf-8')
 
 
 firstRun = not config.has_section('sbanken')
@@ -178,33 +176,25 @@ except KeyboardInterrupt:  # User pressed ctrl+c
     printShortHelp()
     exit()
 
-print
-print 'Please wait...'
-print
-# print clientId
-# print clientSecret
-# print userId
-userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
-# print str(response.status_code)
-# print response.content
-# print response.status_code
 
-headers = {'Authorization': 'Bearer ' +
-           accessToken, 'Accept': 'application/json'}
-response = requests.get(
-    'https://api.sbanken.no/bank/api/v1/accounts/' + userId, headers=headers)
+def printBalances():
+    print
+    print 'Please wait...'
+    print
+    userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
 
-# print str(response.status_code)
-# print response.content
-# print response.status_code
-accountData = response.json()
-print '┏━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓'
-print '┃  # ┃ Account number     ┃ Account name              ┃ Bank balance       ┃ Book balance       ┃'
-print '┣━━━━╋━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━┫'
-for i, account in enumerate(accountData['items']):
-    # print account
-    print '┃' + str(i + 1).rjust(3, ' ') + ' ┃' + str(clean(account['accountNumber'], True).rjust(19, ' ')) + ' ┃' + clean(account['name'], True).rjust(26, ' ').encode('utf-8') + ' ┃ ' + clean(('{:,.2f}'.format(account['available'])).rjust(18, ' ')) + ' ┃ ' + clean(('{:,.2f}'.format(account['balance'])).rjust(18, ' ')) + ' ┃'
-print '┗━━━━┻━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━┛'
-print
-print '💰'
+    headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json'}
+    response = requests.get('https://api.sbanken.no/bank/api/v1/accounts/' + userId, headers=headers)
+    accountData = response.json()
+    print '┏━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓'
+    print '┃  # ┃ ' + str(_('account_number')).ljust(18) + ' ┃ ' + str(_('account_name')).ljust(25) + ' ┃ ' + str(_('bank_balance')).ljust(20) + ' ┃ ' + str(_('book_balance')).decode('utf-8').ljust(20).encode('utf-8') + ' ┃'
+    print '┣━━━━╋━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━┫'
+    for i, account in enumerate(accountData['items']):
+        print '┃' + str(i + 1).rjust(3, ' ') + ' ┃' + str(getCleanOutput(account['accountNumber'], True).rjust(19, ' ')) + ' ┃ ' + getCleanOutput(account['name'], True).decode('utf-8').rjust(25, ' ').encode('utf-8') + ' ┃ ' + getCleanOutput(('{:,.2f}'.format(account['available'])).rjust(20, ' ')) + ' ┃ ' + getCleanOutput(('{:,.2f}'.format(account['balance'])).rjust(20, ' ')) + ' ┃'
+    print '┗━━━━┻━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━┛'
+    print
+    print '💰'
+
+
+printBalances()
 printShortHelp()
