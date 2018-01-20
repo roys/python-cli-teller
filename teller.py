@@ -10,12 +10,14 @@ import base64
 import getpass
 import sys
 
-VERSION = '1.0.0'
+VERSION = '1.0.1'
 FILENAME_CONFIG = os.path.join(os.path.dirname(
     os.path.realpath(__file__)), 'config.ini')
 anonymize = False
 
 config = configparser.ConfigParser()
+if not config.has_section('general'):
+    config.add_section('general')
 config.read(FILENAME_CONFIG)
 
 
@@ -35,10 +37,14 @@ def getLanguageConfig():
         pass
     try:
         langConfig.read(os.path.join(os.path.dirname(os.path.realpath(
-            __file__)), 'strings_' + config.get('config', 'language') + '.ini'))
+            __file__)), 'strings_' + config.get('general', 'language') + '.ini'))
     except (configparser.NoOptionError, configparser.NoSectionError, configparser.MissingSectionHeaderError):
         pass
     return langConfig
+
+
+def storeConfig():
+    config.write(open(FILENAME_CONFIG, 'w'))
 
 
 langConfig = getLanguageConfig()
@@ -69,6 +75,16 @@ for i, arg in enumerate(sys.argv):
     elif arg == '--version' or arg == '-v':
         print 'Version ' + VERSION + '. © 2018 Roy Solberg - https://roysolberg.com .'
         exit()
+    elif arg.startswith('-l=') or arg.startswith('--lang='):
+        lang = arg.split('=', 2)[1]
+        if len(lang) > 0:
+            config.set('general', 'language', lang)
+            langConfig = getLanguageConfig()
+            storeConfig()
+        else:
+            print _('error_specify_language')
+            exit()
+        pass
 
 
 def clean(input, *onlyParts):
@@ -110,7 +126,7 @@ if firstRun:
             config.set('sbanken', 'clientSecret',
                        aesCipher.encrypt(clientSecret))
             config.set('sbanken', 'userId', aesCipher.encrypt(userId))
-            config.write(open(FILENAME_CONFIG, 'w'))
+            storeConfig()
     else:
         exit()
 else:
