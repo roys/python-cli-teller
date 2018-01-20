@@ -4,11 +4,12 @@
 import configparser
 import locale
 import os
-from aescipher import AESCipher
-import requests
 import base64
 import getpass
 import sys
+import time
+import requests
+from aescipher import AESCipher
 
 VERSION = '1.0.1'
 FILENAME_CONFIG = os.path.join(os.path.dirname(
@@ -19,6 +20,8 @@ config = configparser.ConfigParser()
 if not config.has_section('general'):
     config.add_section('general')
 config.read(FILENAME_CONFIG)
+global password
+password = None
 
 
 def getLanguageConfig():
@@ -50,9 +53,12 @@ def storeConfig():
 langConfig = getLanguageConfig()
 
 
-def _(key):
+def _(key, *args):
     if langConfig.has_option('language', key):
-        return langConfig.get('language', key).replace('\\t', '    ')
+        value = langConfig.get('language', key).replace('\\t', '    ')
+        for arg in args:
+            value = value.replace('%s', str(arg), 1)
+        return value
     return key
 
 
@@ -107,6 +113,7 @@ if firstRun:
     print
     print _('password_or_pin_if_you_want_to_store_data')
     print
+    global password
     password = getpass.getpass(_('enter_password'))
     isInputValid = True
     if len(clientId) == 0:
@@ -123,8 +130,7 @@ if firstRun:
             config.add_section('sbanken')
             aesCipher = AESCipher(password)
             config.set('sbanken', 'clientId', aesCipher.encrypt(clientId))
-            config.set('sbanken', 'clientSecret',
-                       aesCipher.encrypt(clientSecret))
+            config.set('sbanken', 'clientSecret', aesCipher.encrypt(clientSecret))
             config.set('sbanken', 'userId', aesCipher.encrypt(userId))
             storeConfig()
     else:
@@ -133,16 +139,44 @@ else:
     print
     print _('welcome_back')
     print
-    try:
-        password = getpass.getpass(_('enter_password_2'))
-        clientId = AESCipher(password).decrypt(
-            config.get('sbanken', 'clientId'))
-        clientSecret = AESCipher(password).decrypt(
-            config.get('sbanken', 'clientSecret'))
-        userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
-    except KeyboardInterrupt:  # User pressed ctrl+c
+
+
+def getAccessToken():
+    global password
+    password = getpass.getpass(_('enter_password_2'))
+    clientId = AESCipher(password).decrypt(config.get('sbanken', 'clientId'))
+    if(config.has_option('sbanken', 'accessToken') and config.has_option('sbanken', 'accessTokenExpiration')):
+        accessToken = AESCipher(password).decrypt(config.get('sbanken', 'accessToken'))
+        accessTokenExpiration = AESCipher(password).decrypt(config.get('sbanken', 'accessTokenExpiration'))
+        if time.time() < accessTokenExpiration:
+            # print 'Using existing access token that expires in ' + str((int(accessTokenExpiration) - time.time()) / 60) + ' minutes.'
+            return accessToken
+    clientSecret = AESCipher(password).decrypt(config.get('sbanken', 'clientSecret'))
+
+    headers = {'Authorization': 'Basic ' + base64.b64encode(clientId + ':' + clientSecret), 'Accept': 'application/json'}
+    response = requests.post('https://api.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
+    if response.status_code == 200:
+        json = response.json()
+        accessToken = json['access_token']
+        accessTokenExpiration = str(int(time.time()) + int(json['expires_in']))
+        aesCipher = AESCipher(password)
+        config.set('sbanken', 'accessToken', aesCipher.encrypt(accessToken))
+        config.set('sbanken', 'accessTokenExpiration', aesCipher.encrypt(accessTokenExpiration))
+        storeConfig()
+        return accessToken
+    else:
+        print
+        print _('error_failed_to_authenticate', response.status_code, response.content)
         printShortHelp()
         exit()
+    return None
+
+
+try:
+    accessToken = getAccessToken()
+except KeyboardInterrupt:  # User pressed ctrl+c
+    printShortHelp()
+    exit()
 
 print
 print 'Please wait...'
@@ -150,37 +184,27 @@ print
 # print clientId
 # print clientSecret
 # print userId
-headers = {'Authorization': 'Basic ' +
-           base64.b64encode(clientId + ':' + clientSecret), 'Accept': 'application/json'}
-response = requests.post('https://api.sbanken.no/identityserver/connect/token',
-                         {'grant_type': 'client_credentials'}, headers=headers)
+userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
+# print str(response.status_code)
+# print response.content
+# print response.status_code
+
+headers = {'Authorization': 'Bearer ' +
+           accessToken, 'Accept': 'application/json'}
+response = requests.get(
+    'https://api.sbanken.no/bank/api/v1/accounts/' + userId, headers=headers)
 
 # print str(response.status_code)
 # print response.content
 # print response.status_code
-accessToken = response.json()['access_token']
-# "expires_in":3600,"token_type":"Bearer"}
-
-if response.status_code == 200:
-    headers = {'Authorization': 'Bearer ' +
-               accessToken, 'Accept': 'application/json'}
-    response = requests.get(
-        'https://api.sbanken.no/bank/api/v1/accounts/' + userId, headers=headers)
-
-    # print str(response.status_code)
-    # print response.content
-    # print response.status_code
-    accountData = response.json()
-    print '┏━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓'
-    print '┃  # ┃ Account number     ┃ Account name              ┃ Bank balance       ┃ Book balance       ┃'
-    print '┣━━━━╋━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━┫'
-    for i, account in enumerate(accountData['items']):
-        # print account
-        print '┃' + str(i + 1).rjust(3, ' ') + ' ┃' + str(clean(account['accountNumber'], True).rjust(19, ' ')) + ' ┃' + clean(account['name'], True).rjust(26, ' ').encode('utf-8') + ' ┃ ' + clean(('{:,.2f}'.format(account['available'])).rjust(18, ' ')) + ' ┃ ' + clean(('{:,.2f}'.format(account['balance'])).rjust(18, ' ')) + ' ┃'
-    print '┗━━━━┻━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━┛'
-    print
-    print '💰'
-    printShortHelp()
-else:
-    # TODO
-    pass
+accountData = response.json()
+print '┏━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━┓'
+print '┃  # ┃ Account number     ┃ Account name              ┃ Bank balance       ┃ Book balance       ┃'
+print '┣━━━━╋━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━┫'
+for i, account in enumerate(accountData['items']):
+    # print account
+    print '┃' + str(i + 1).rjust(3, ' ') + ' ┃' + str(clean(account['accountNumber'], True).rjust(19, ' ')) + ' ┃' + clean(account['name'], True).rjust(26, ' ').encode('utf-8') + ' ┃ ' + clean(('{:,.2f}'.format(account['available'])).rjust(18, ' ')) + ' ┃ ' + clean(('{:,.2f}'.format(account['balance'])).rjust(18, ' ')) + ' ┃'
+print '┗━━━━┻━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━┛'
+print
+print '💰'
+printShortHelp()
