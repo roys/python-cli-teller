@@ -145,8 +145,10 @@ def getAccessToken():
     clientId = AESCipher(password).decrypt(config.get('sbanken', 'clientId'))
     if(config.has_option('sbanken', 'accessToken') and config.has_option('sbanken', 'accessTokenExpiration')):
         accessToken = AESCipher(password).decrypt(config.get('sbanken', 'accessToken'))
-        accessTokenExpiration = AESCipher(password).decrypt(config.get('sbanken', 'accessTokenExpiration'))
-        if time.time() < accessTokenExpiration:
+        accessTokenExpiration = int(AESCipher(password).decrypt(config.get('sbanken', 'accessTokenExpiration')))
+        if int(time.time()) < accessTokenExpiration:
+            # print time.time()
+            # print accessTokenExpiration
             # print 'Using existing access token that expires in ' + str((int(accessTokenExpiration) - time.time()) / 60) + ' minutes.'
             return accessToken
     clientSecret = AESCipher(password).decrypt(config.get('sbanken', 'clientSecret'))
@@ -177,6 +179,13 @@ except KeyboardInterrupt:  # User pressed ctrl+c
     exit()
 
 
+def getNiceAccountNo(accountNo):
+    if len(accountNo) >= 11:
+        # TODO: How can this be described in a better way?
+        return accountNo[:4] + '.' + accountNo[4:6] + '.' + accountNo[6:]
+    return accountNo
+
+
 def printBalances():
     print
     print 'Please wait...'
@@ -186,12 +195,12 @@ def printBalances():
     headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json'}
     response = requests.get('https://api.sbanken.no/bank/api/v1/accounts/' + userId, headers=headers)
     accountData = response.json()
-    print '┏━━━━┳━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━┓'
-    print '┃  # ┃ ' + str(_('account_number')).ljust(18) + ' ┃ ' + str(_('account_name')).ljust(25) + ' ┃ ' + str(_('bank_balance')).ljust(20) + ' ┃ ' + str(_('book_balance')).decode('utf-8').ljust(20).encode('utf-8') + ' ┃'
-    print '┣━━━━╋━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━┫'
+    print '┏━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┓'
+    print '┃  # ┃ ' + str(_('account_number')).ljust(14) + ' ┃ ' + str(_('account_name')).ljust(25) + ' ┃ ' + str(_('bank_balance')).ljust(15) + ' ┃ ' + str(_('book_balance')).decode('utf-8').ljust(15).encode('utf-8') + ' ┃'
+    print '┣━━━━╋━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━┫'
     for i, account in enumerate(accountData['items']):
-        print '┃' + str(i + 1).rjust(3, ' ') + ' ┃' + str(getCleanOutput(account['accountNumber'], True).rjust(19, ' ')) + ' ┃ ' + getCleanOutput(account['name'], True).decode('utf-8').rjust(25, ' ').encode('utf-8') + ' ┃ ' + getCleanOutput(('{:,.2f}'.format(account['available'])).rjust(20, ' ')) + ' ┃ ' + getCleanOutput(('{:,.2f}'.format(account['balance'])).rjust(20, ' ')) + ' ┃'
-    print '┗━━━━┻━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━┛'
+        print '┃' + str(i + 1).rjust(3, ' ') + ' ┃ ' + str(getCleanOutput(getNiceAccountNo(account['accountNumber']), True).rjust(14, ' ')) + ' ┃ ' + getCleanOutput(account['name'], True).decode('utf-8').rjust(25, ' ').encode('utf-8') + ' ┃ ' + getCleanOutput(('{:,.2f}'.format(account['available'])).rjust(15, ' ')) + ' ┃ ' + getCleanOutput(('{:,.2f}'.format(account['balance'])).rjust(15, ' ')) + ' ┃'
+    print '┗━━━━┻━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┛'
     print
     print '💰'
 
