@@ -70,6 +70,12 @@ def printHelp():
     print _('help_description')
 
 
+def printPleaseWait():
+    print
+    print _('please_wait')
+    print
+
+
 for i, arg in enumerate(sys.argv):
     if arg == '--anonymize' or arg == '--anon' or arg == '-a':
         anonymize = True
@@ -142,6 +148,7 @@ else:
 def getAccessToken():
     global password
     password = getpass.getpass(_('enter_password_2'))
+    printPleaseWait()
     clientId = AESCipher(password).decrypt(config.get('sbanken', 'clientId'))
     if(config.has_option('sbanken', 'accessToken') and config.has_option('sbanken', 'accessTokenExpiration')):
         accessToken = AESCipher(password).decrypt(config.get('sbanken', 'accessToken'))
@@ -172,13 +179,6 @@ def getAccessToken():
     return None
 
 
-try:
-    accessToken = getAccessToken()
-except KeyboardInterrupt:  # User pressed ctrl+c
-    printShortHelp()
-    exit()
-
-
 def getNiceAccountNo(accountNo):
     if len(accountNo) >= 11:
         # TODO: How can this be described in a better way?
@@ -186,15 +186,15 @@ def getNiceAccountNo(accountNo):
     return accountNo
 
 
-def printBalances():
-    print
-    print 'Please wait...'
-    print
+def getAccountData():
     userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
-
     headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json'}
     response = requests.get('https://api.sbanken.no/bank/api/v1/accounts/' + userId, headers=headers)
-    accountData = response.json()
+    return response.json()
+
+
+def printBalances():
+    accountData = getAccountData()
     print '┏━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┓'
     print '┃  # ┃ ' + str(_('account_number')).ljust(14) + ' ┃ ' + str(_('account_name')).ljust(25) + ' ┃ ' + str(_('bank_balance')).ljust(15) + ' ┃ ' + str(_('book_balance')).decode('utf-8').ljust(15).encode('utf-8') + ' ┃'
     print '┣━━━━╋━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━┫'
@@ -204,6 +204,11 @@ def printBalances():
     print
     print '💰'
 
+try:
+    accessToken = getAccessToken()
+except KeyboardInterrupt:  # User pressed ctrl+c
+    printShortHelp()
+    exit()
 
 printBalances()
 printShortHelp()
