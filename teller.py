@@ -75,7 +75,8 @@ def printPleaseWait():
     print _('please_wait')
     print
 
-
+# TODO: Try out argparse instead of this
+# https://docs.python.org/2/library/argparse.html
 for i, arg in enumerate(sys.argv):
     if arg == '--anonymize' or arg == '--anon' or arg == '-a':
         anonymize = True
