@@ -9,12 +9,12 @@ import getpass
 import sys
 import time
 import requests
+import argparse
 from aescipher import AESCipher
 
 VERSION = '1.0.1'
 FILENAME_CONFIG = os.path.join(os.path.dirname(
     os.path.realpath(__file__)), 'config.ini')
-anonymize = False
 
 config = configparser.ConfigParser()
 if not config.has_section('general'):
@@ -75,31 +75,36 @@ def printPleaseWait():
     print _('please_wait')
     print
 
-# TODO: Try out argparse instead of this
-# https://docs.python.org/2/library/argparse.html
-for i, arg in enumerate(sys.argv):
-    if arg == '--anonymize' or arg == '--anon' or arg == '-a':
-        anonymize = True
-    elif arg == '--help' or arg == '-h':
-        printHelp()
-        exit()
-    elif arg == '--version' or arg == '-v':
-        print 'Version ' + VERSION + '. © 2018 Roy Solberg - https://roysolberg.com .'
-        exit()
-    elif arg.startswith('-l=') or arg.startswith('--lang='):
-        lang = arg.split('=', 2)[1]
-        if len(lang) > 0:
-            config.set('general', 'language', lang)
-            langConfig = getLanguageConfig()
-            storeConfig()
-        else:
-            print _('error_specify_language')
-            exit()
-        pass
+
+parser = argparse.ArgumentParser()
+subparsers = parser.add_subparsers(dest='command')
+accountsParser = subparsers.add_parser('accounts')
+transferParser = subparsers.add_parser('transfer')
+transferParser.add_argument("from_account", type=str)
+transferParser.add_argument("to_account", type=str)
+transferParser.add_argument("amount", type=float)
+transferParser.add_argument("message", type=str)
+parser.add_argument("-a", "--anon", "--anonymize", help=_('args_help_anonymize'), action="store_true")
+parser.add_argument("-l", "--lang", help=_('args_help_language'), action="store")
+parser.add_argument("-v", "--verbose", help=_('args_help_verbose'), action="store_true")
+parser.add_argument('-V', '--version', action='version', version='%(prog)s version ' + VERSION + '. © 2018 Roy Solberg - https://roysolberg.com.')
+# A little HACK as add_subparsers() makes it required to have a command (event though we want to default to 'accounts'):
+commands = ['accounts', 'transfer']
+if not any(i in commands for i in sys.argv):
+    sys.argv.append('accounts')
+args = parser.parse_args(sys.argv[1:])
+
+
+if args.lang is not None:
+    if args.verbose:
+        print 'Setting language to [' + args.lang + '].'
+    config.set('general', 'language', args.lang)
+    langConfig = getLanguageConfig()
+    storeConfig()
 
 
 def getCleanOutput(input, *onlyParts):
-    if anonymize:
+    if args.anon:
         if onlyParts:
             return input[:4].ljust(len(input), '*').encode('utf-8')
         return '*' * len(input)
@@ -157,10 +162,13 @@ def getAccessToken():
         if int(time.time()) < accessTokenExpiration:
             # print time.time()
             # print accessTokenExpiration
-            # print 'Using existing access token that expires in ' + str((int(accessTokenExpiration) - time.time()) / 60) + ' minutes.'
+            if args.verbose:
+                print 'Using existing access token that expires in ' + str(int((int(accessTokenExpiration) - time.time()) / 60)) + ' minutes.'
             return accessToken
     clientSecret = AESCipher(password).decrypt(config.get('sbanken', 'clientSecret'))
 
+    if args.verbose:
+        print 'Getting a fresh access token.'
     headers = {'Authorization': 'Basic ' + base64.b64encode(clientId + ':' + clientSecret), 'Accept': 'application/json'}
     response = requests.post('https://api.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
     if response.status_code == 200:
@@ -205,11 +213,16 @@ def printBalances():
     print
     print '💰'
 
+
 try:
     accessToken = getAccessToken()
 except KeyboardInterrupt:  # User pressed ctrl+c
     printShortHelp()
     exit()
 
-printBalances()
-printShortHelp()
+if args.command == 'accounts':
+    printBalances()
+    printShortHelp()
+elif args.command == 'transfer':
+    print args
+    pass
