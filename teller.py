@@ -1,6 +1,8 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 # TODO: Clean up everything :-)
+# TODO: Let currency formatting be controlled by lang file
+# TODO: Should commands be subject to L10N too?
 import configparser
 import locale
 import os
@@ -10,6 +12,7 @@ import sys
 import time
 import requests
 import argparse
+import json
 from aescipher import AESCipher
 
 VERSION = '1.0.1'
@@ -55,7 +58,7 @@ def _(key, *args):
     if langConfig.has_option('language', key):
         value = langConfig.get('language', key).replace('\\t', '    ')
         for arg in args:
-            value = value.replace('%s', str(arg), 1)
+            value = value.replace('%s', str(arg).decode('utf-8'), 1)
         return value.encode('utf-8')
     return key
 
@@ -76,18 +79,21 @@ def printPleaseWait():
     print
 
 
-parser = argparse.ArgumentParser()
+parser = argparse.ArgumentParser(add_help=False)
 subparsers = parser.add_subparsers(dest='command')
-accountsParser = subparsers.add_parser('accounts')
-transferParser = subparsers.add_parser('transfer')
-transferParser.add_argument("from_account", type=str)
-transferParser.add_argument("to_account", type=str)
-transferParser.add_argument("amount", type=float)
-transferParser.add_argument("message", type=str)
+accountsParser = subparsers.add_parser('accounts', add_help=False)
+accountsParser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
+transferParser = subparsers.add_parser('transfer', add_help=False)
+transferParser.add_argument("from_account", type=str, help=_('args_help_from_account'))
+transferParser.add_argument("to_account", type=str, help=_('args_help_to_account'))
+transferParser.add_argument("amount", type=float, help=_('args_help_amount'))
+transferParser.add_argument("message", type=str, default='Transfered by teller', nargs='?', help=_('args_help_message'))
+transferParser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
 parser.add_argument("-a", "--anon", "--anonymize", help=_('args_help_anonymize'), action="store_true")
 parser.add_argument("-l", "--lang", help=_('args_help_language'), action="store")
 parser.add_argument("-v", "--verbose", help=_('args_help_verbose'), action="store_true")
 parser.add_argument('-V', '--version', action='version', version='%(prog)s version ' + VERSION + '. © 2018 Roy Solberg - https://roysolberg.com.')
+parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
 # A little HACK as add_subparsers() makes it required to have a command (event though we want to default to 'accounts'):
 commands = ['accounts', 'transfer']
 if not any(i in commands for i in sys.argv):
@@ -117,9 +123,13 @@ if firstRun:
     print
     print _('first_run_message')
     print
-    clientId = raw_input(_('enter_client_id') + ' ')
-    clientSecret = raw_input(_('enter_client_secret') + ' ')
-    userId = raw_input(_('enter_user_id') + ' ')
+    try:
+        clientId = raw_input(_('enter_client_id') + ' ')
+        clientSecret = raw_input(_('enter_client_secret') + ' ')
+        userId = raw_input(_('enter_user_id') + ' ')
+    except KeyboardInterrupt:  # User pressed ctrl+c
+        printShortHelp()
+        exit()
     print
     print _('password_or_pin_if_you_want_to_store_data')
     print
@@ -214,6 +224,66 @@ def printBalances():
     print '💰'
 
 
+def getAccount(accountToFind, accounts):
+    accountToFindCleaned = accountToFind.replace(' ', '').replace('.', '').replace('#', '')
+    for i, account in enumerate(accounts):
+        if accountToFindCleaned == account['accountNumber']:
+            return account
+        if accountToFind.lower() == account['name'].lower():
+            return account
+        if str(i + 1) == accountToFindCleaned:
+            return account
+    return None
+
+
+def validateTransfer(fromAccount, toAccount):
+    if fromAccount is None:
+        print _('error_unknown_account', args.from_account)
+        exit()
+    if args.verbose:
+        print 'Using from account ' + str(fromAccount)
+    if toAccount is None:
+        print _('error_unknown_account', args.to_account)
+        exit()
+    if args.verbose:
+        print 'Using to account ' + str(toAccount)
+    if fromAccount['accountNumber'] == toAccount['accountNumber']:
+        print _('error_from_and_to_account_cannot_be_the_same')
+        exit()
+
+
+def doTransfer():
+    accounts = getAccountData()['items']
+    fromAccount = getAccount(args.from_account, accounts)
+    toAccount = getAccount(args.to_account, accounts)
+    validateTransfer(fromAccount, toAccount)
+    userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
+    headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json'}
+    transfer = {'FromAccount': fromAccount['accountNumber'], 'ToAccount': toAccount['accountNumber'], 'Amount': args.amount, 'Message': args.message}
+    response = requests.post('https://api.sbanken.no/bank/api/v1/transfers/' + userId, headers=headers, data=json.dumps(transfer))
+    # This one gives HTTP 200 even on some errors
+    if response.status_code == 200:
+        jsonObj = response.json()
+        if not jsonObj['isError']:
+            print _('transfer_successful')
+            exit()
+        else:
+            print
+            print _('error_transfer_failed_2', jsonObj['errorMessage'].encode('utf-8'))
+            printShortHelp()
+            exit()
+    else:
+        print
+        print _('error_transfer_failed', response.status_code, response.content)
+        printShortHelp()
+        exit()
+
+    print response.status_code
+    print response.reason
+    print response.headers
+    print 'Content:' + str(response.content)
+
+
 try:
     accessToken = getAccessToken()
 except KeyboardInterrupt:  # User pressed ctrl+c
@@ -224,5 +294,4 @@ if args.command == 'accounts':
     printBalances()
     printShortHelp()
 elif args.command == 'transfer':
-    print args
-    pass
+    doTransfer()
