@@ -3,6 +3,7 @@
 # TODO: Clean up everything :-)
 # TODO: Let currency formatting be controlled by lang file
 # TODO: Should commands be subject to L10N too?
+# TODO: Translate everything to Norwegian
 import configparser
 import locale
 import os
@@ -14,8 +15,9 @@ import requests
 import argparse
 import json
 from aescipher import AESCipher
+import locale
 
-VERSION = '1.0.1'
+VERSION = '1.0.2'
 FILENAME_CONFIG = os.path.join(os.path.dirname(
     os.path.realpath(__file__)), 'config.ini')
 
@@ -79,6 +81,7 @@ def printPleaseWait():
     print
 
 
+locale.setlocale(locale.LC_ALL, _('locale'))
 parser = argparse.ArgumentParser(add_help=False)
 subparsers = parser.add_subparsers(dest='command')
 accountsParser = subparsers.add_parser('accounts', add_help=False)
@@ -107,14 +110,6 @@ if args.lang is not None:
     config.set('general', 'language', args.lang)
     langConfig = getLanguageConfig()
     storeConfig()
-
-
-def getCleanOutput(input, *onlyParts):
-    if args.anon:
-        if onlyParts:
-            return input[:4].ljust(len(input), '*').encode('utf-8')
-        return '*' * len(input)
-    return input.encode('utf-8')
 
 
 firstRun = not config.has_section('sbanken')
@@ -198,11 +193,35 @@ def getAccessToken():
     return None
 
 
+def getNiceName(name):
+    if args.anon:
+        return name[:3] + '*' * (len(name) - 3)
+    return name
+
+
 def getNiceAccountNo(accountNo):
+    if args.anon:
+        if len(accountNo) > 4:
+            accountNo = accountNo[:4] + '*' * (len(accountNo) - 4)
+        else:
+            accountNo = '*' * len(accountNo)
     if len(accountNo) >= 11:
         # TODO: How can this be described in a better way?
         return accountNo[:4] + '.' + accountNo[4:6] + '.' + accountNo[6:]
     return accountNo
+
+
+def getNiceAmount(amount, includeCurrencySymbol):
+    # Wasn't happy with the no_no currency formatting, so doing this custom thingy instead:
+    if includeCurrencySymbol:
+        amount = locale.format('%.2f', amount, grouping=True, monetary=True) + ' ' + _('currency_symbol')
+    else:
+        amount = locale.format('%.2f', amount, grouping=True, monetary=True)
+    if args.anon:
+        if includeCurrencySymbol:
+            return ('*' * 7) + amount[-(len(' ' + _('currency_symbol')) + 4):]
+        return ('*' * 7) + amount[-4:]
+    return amount
 
 
 def getAccountData():
@@ -218,7 +237,7 @@ def printBalances():
     print '┃  # ┃ ' + str(_('account_number')).ljust(14) + ' ┃ ' + str(_('account_name')).ljust(25) + ' ┃ ' + str(_('bank_balance')).ljust(15) + ' ┃ ' + str(_('book_balance')).decode('utf-8').ljust(15).encode('utf-8') + ' ┃'
     print '┣━━━━╋━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━┫'
     for i, account in enumerate(accountData['items']):
-        print '┃' + str(i + 1).rjust(3, ' ') + ' ┃ ' + str(getCleanOutput(getNiceAccountNo(account['accountNumber']), True).rjust(14, ' ')) + ' ┃ ' + getCleanOutput(account['name'], True).decode('utf-8').rjust(25, ' ').encode('utf-8') + ' ┃ ' + getCleanOutput(('{:,.2f}'.format(account['available'])).rjust(15, ' ')) + ' ┃ ' + getCleanOutput(('{:,.2f}'.format(account['balance'])).rjust(15, ' ')) + ' ┃'
+        print '┃' + str(i + 1).rjust(3, ' ') + ' ┃ ' + str(getNiceAccountNo(account['accountNumber']).decode('utf-8').rjust(14, ' ').encode('utf-8')) + ' ┃ ' + getNiceName(account['name']).rjust(25, ' ').encode('utf-8') + ' ┃ ' + getNiceAmount(account['available'], True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃ ' + getNiceAmount(account['balance'], True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃'
     print '┗━━━━┻━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┛'
     print
     print '💰'
@@ -265,7 +284,7 @@ def doTransfer():
     if response.status_code == 200:
         jsonObj = response.json()
         if not jsonObj['isError']:
-            print _('transfer_successful')
+            print _('transfer_successful', getNiceAmount(args.amount, True), getNiceAccountNo(fromAccount['accountNumber']), getNiceAccountNo(toAccount['accountNumber']))
             exit()
         else:
             print
