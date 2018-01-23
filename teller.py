@@ -150,10 +150,6 @@ if firstRun:
             storeConfig()
     else:
         exit()
-else:
-    print
-    print _('welcome_back')
-    print
 
 
 def getAccessToken():
@@ -310,6 +306,8 @@ except KeyboardInterrupt:  # User pressed ctrl+c
     exit()
 
 if args.command == 'accounts':
+    print _('welcome_back')
+    print
     printBalances()
     printShortHelp()
 elif args.command == 'transfer':
