@@ -1,9 +1,10 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 # TODO: Clean up everything :-)
-# TODO: Let currency formatting be controlled by lang file
 # TODO: Should commands be subject to L10N too?
 # TODO: Translate everything to Norwegian
+# TODO: Clean up all the unicode stuff
+# TODO: Add reset to delete encrypted ID, secret and token from config file
 import configparser
 import locale
 import os
@@ -15,11 +16,12 @@ import requests
 import argparse
 import json
 from aescipher import AESCipher
-import locale
+import dateutil.parser
 
-VERSION = '1.0.2'
-FILENAME_CONFIG = os.path.join(os.path.dirname(
-    os.path.realpath(__file__)), 'config.ini')
+VERSION = '1.0.3'
+FILENAME_CONFIG = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'config.ini')
+COLOR_ERROR = '\033[91m'
+COLOR_RESET = '\033[0m'
 
 config = configparser.ConfigParser()
 if not config.has_section('general'):
@@ -56,13 +58,23 @@ def storeConfig():
 langConfig = getLanguageConfig()
 
 
-def _(key, *args):
+def _(key, *args, **kwargs):
+    value = ''
+    error = False
+    if 'error' in kwargs:
+        error = kwargs['error']
+    if error:
+        value += COLOR_ERROR
     if langConfig.has_option('language', key):
-        value = langConfig.get('language', key).replace('\\t', '    ')
+        dictValue = langConfig.get('language', key).replace('\\t', '    ')
         for arg in args:
-            value = value.replace('%s', str(arg).decode('utf-8'), 1)
-        return value.encode('utf-8')
-    return key
+            dictValue = dictValue.replace('%s', str(arg).decode('utf-8'), 1)
+        value += dictValue.encode('utf-8')
+    else:
+        value += key
+    if error:
+        value += COLOR_RESET
+    return value
 
 
 def printShortHelp():
@@ -92,13 +104,21 @@ transferParser.add_argument("to_account", type=str, help=_('args_help_to_account
 transferParser.add_argument("amount", type=float, help=_('args_help_amount'))
 transferParser.add_argument("message", type=str, default='Transfered by teller', nargs='?', help=_('args_help_message'))
 transferParser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
+transactionsParser = subparsers.add_parser('trans', add_help=False)
+transactionsParser.add_argument("account", type=str, help=_('args_help_account'))
+transactionsParser.add_argument("start", type=str, default='', nargs='?', help=_('args_help_start_date'))
+transactionsParser.add_argument("end", type=str, default='', nargs='?', help=_('args_help_end_date'))
+transactionsParser.add_argument("index", type=int, default=0, nargs='?', help=_('args_help_index'))
+transactionsParser.add_argument("quantity", type=int, default=1000, nargs='?', help=_('args_help_quantity'))
+transactionsParser.add_argument("-s", "--search", help=_('args_help_search'), action="store")
+transactionsParser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
 parser.add_argument("-a", "--anon", "--anonymize", help=_('args_help_anonymize'), action="store_true")
 parser.add_argument("-l", "--lang", help=_('args_help_language'), action="store")
 parser.add_argument("-v", "--verbose", help=_('args_help_verbose'), action="store_true")
 parser.add_argument('-V', '--version', action='version', version='%(prog)s version ' + VERSION + '. © 2018 Roy Solberg - https://roysolberg.com.')
 parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
 # A little HACK as add_subparsers() makes it required to have a command (event though we want to default to 'accounts'):
-commands = ['accounts', 'transfer']
+commands = ['accounts', 'transfer', 'trans']
 if not any(i in commands for i in sys.argv):
     sys.argv.append('accounts')
 args = parser.parse_args(sys.argv[1:])
@@ -158,14 +178,19 @@ def getAccessToken():
     printPleaseWait()
     clientId = AESCipher(password).decrypt(config.get('sbanken', 'clientId'))
     if(config.has_option('sbanken', 'accessToken') and config.has_option('sbanken', 'accessTokenExpiration')):
-        accessToken = AESCipher(password).decrypt(config.get('sbanken', 'accessToken'))
-        accessTokenExpiration = int(AESCipher(password).decrypt(config.get('sbanken', 'accessTokenExpiration')))
-        if int(time.time()) < accessTokenExpiration:
-            # print time.time()
-            # print accessTokenExpiration
-            if args.verbose:
-                print 'Using existing access token that expires in ' + str(int((int(accessTokenExpiration) - time.time()) / 60)) + ' minutes.'
-            return accessToken
+        try:
+            accessToken = AESCipher(password).decrypt(config.get('sbanken', 'accessToken'))
+            accessTokenExpiration = int(AESCipher(password).decrypt(config.get('sbanken', 'accessTokenExpiration')))
+            if int(time.time()) < accessTokenExpiration:
+                # print time.time()
+                # print accessTokenExpiration
+                if args.verbose:
+                    print 'Using existing access token that expires in ' + str(int((int(accessTokenExpiration) - time.time()) / 60)) + ' minutes.'
+                return accessToken
+        except ValueError:
+            print _('error_failed_to_decrypt_token', error=True)
+            printShortHelp()
+            exit()
     clientSecret = AESCipher(password).decrypt(config.get('sbanken', 'clientSecret'))
 
     if args.verbose:
@@ -183,7 +208,7 @@ def getAccessToken():
         return accessToken
     else:
         print
-        print _('error_failed_to_authenticate', response.status_code, response.content)
+        print _('error_failed_to_authenticate', response.status_code, response.content, error=True)
         printShortHelp()
         exit()
     return None
@@ -191,7 +216,7 @@ def getAccessToken():
 
 def getNiceName(name):
     if args.anon:
-        return name[:3] + '*' * (len(name) - 3)
+        return (name.decode('utf-8')[:3] + '*' * (len(name) - 3)).encode('utf-8')
     return name
 
 
@@ -220,6 +245,14 @@ def getNiceAmount(amount, includeCurrencySymbol):
     return amount
 
 
+def getNiceTransactionType(transactionType):
+    if transactionType == 'RKI':
+        return _('transfer')
+    if transactionType == 'RK':
+        return _('purchase')
+    return transactionType.encode('utf-8')
+
+
 def getAccountData():
     userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
     headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json'}
@@ -239,6 +272,113 @@ def printBalances():
     print '💰'
 
 
+def printTransactions():
+    # print args
+    accounts = getAccountData()['items']
+    account = getAccount(args.account, accounts)
+    if account is None:
+        print _('error_unknown_account', args.account, error=True)
+        exit()
+    userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
+    headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json'}
+    if args.start is not None and args.start != '':
+        try:
+            args.start = dateutil.parser.parse(args.start, fuzzy=True)
+            args.start = args.start.strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+    if args.end is not None and args.end != '':
+        try:
+            args.end = dateutil.parser.parse(args.end, fuzzy=True)
+            args.end = args.end.strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+    if args.start is not None and args.start != '' and args.end is not None and args.end != '':
+        if args.start > args.end:
+            temp = args.start
+            args.start = args.end
+            args.end = temp
+        print _('using_start_date_and_end_date', args.start, args.end)
+        print
+    elif args.start is not None and args.start != '':
+        print _('using_start_date', args.start)
+        print
+    params = {'index': args.index, 'length': args.quantity, 'startDate': args.start, 'endDate': args.end}
+    response = requests.get('https://api.sbanken.no/bank/api/v1/transactions/' + userId + '/' + account['accountNumber'], headers=headers, params=params)
+    if response.status_code == 200:
+        jsonObj = response.json()
+        # TODO: Print num of trans
+        # TODO: {u'errorType': None, u'items': None, u'errorMessage': None, u'availableItems': 354, u'traceId': None, u'isError': False}
+        if not jsonObj['isError']:
+            transactions = jsonObj['items']
+            transactionsCount = len(transactions)
+            if args.search is None:
+                print _('transactions_for', transactionsCount, getNiceName(account['name'].encode('utf-8')), getNiceAccountNo(account['accountNumber']))
+            else:
+                print _('searching_transactions_for', args.search, getNiceName(account['name'].encode('utf-8')), getNiceAccountNo(account['accountNumber']))
+                args.search = args.search.decode('utf-8').lower()
+            print '┏━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┓'
+            print '┃ ' + str(_('accounting_date')).ljust(10) + ' ┃ ' + str(_('interest_date')).ljust(10) + ' ┃ ' + str(_('text')).ljust(61) + ' ┃ ' + str(_('amount')).decode('utf-8').ljust(15).encode('utf-8') + ' ┃ ' + str(_('type')).decode('utf-8').ljust(10).encode('utf-8') + ' ┃'
+            print '┣━━━━━━━━━━━━╋━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━┫'
+            # RKI = "Overførsel"
+            # RK = "Varekjøp"
+            # accountingDate ser ut til å være datoen brukt på kontoutskrift
+            # Kreditrente:
+            # Rentedato: 01.01.2018 <-- interestDate
+            # Bokført: 31.12.2017 <-- accountingDate (vises)
+            incomingAmount = 0
+            incomingCount = 0
+            outgoingAmount = 0
+            outgoingCount = 0
+            for transaction in transactions:
+                if args.search is None or args.search in transaction['text'].lower():
+                    amount = transaction['amount']
+                    print '┃ ' + dateutil.parser.parse(transaction['accountingDate']).strftime(_('date_format')).rjust(10, ' ') + ' ┃ ' + dateutil.parser.parse(transaction['interestDate']).strftime(_('date_format')).rjust(10, ' ') + ' ┃ ' + getNiceName(transaction['text'].encode('utf-8')).decode('utf-8').ljust(61).encode('utf-8') + ' ┃ ' + getNiceAmount(amount, True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃ ' + getNiceTransactionType(transaction['transactionType']).decode('utf-8').ljust(10, ' ').encode('utf-8') + ' ┃'
+                    if amount >= 0:
+                        incomingAmount += amount
+                        incomingCount += 1
+                    else:
+                        outgoingAmount += amount
+                        outgoingCount += 1
+            # str(transaction['transactionId'])
+            # Always None:
+            # print str(transaction['otherAccountNumber'])
+            # print str(transaction['registrationDate'])
+            totalCount = incomingCount + outgoingCount
+            rJustCount = len(str(totalCount))
+            print '┣━━━━━━━━━━━━╋━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━┫'
+            # TODO: We need support for plural
+            if incomingCount == 1:
+                print '┃            ┃            ┃ ' + _('incoming_transaction', str(incomingCount).rjust(rJustCount)).decode('utf-8').ljust(61).encode('utf-8') + ' ┃ ' + getNiceAmount(incomingAmount, True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃            ┃'
+            else:
+                print '┃            ┃            ┃ ' + _('incoming_transactions', str(incomingCount).rjust(rJustCount)).decode('utf-8').ljust(61).encode('utf-8') + ' ┃ ' + getNiceAmount(incomingAmount, True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃            ┃'
+            if outgoingCount == 1:
+                print '┃            ┃            ┃ ' + _('outgoing_transaction', str(outgoingCount).rjust(rJustCount)).decode('utf-8').ljust(61).encode('utf-8') + ' ┃ ' + getNiceAmount(outgoingAmount, True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃            ┃'
+            else:
+                print '┃            ┃            ┃ ' + _('outgoing_transactions', str(outgoingCount).rjust(rJustCount)).decode('utf-8').ljust(61).encode('utf-8') + ' ┃ ' + getNiceAmount(outgoingAmount, True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃            ┃'
+            if totalCount == 1:
+                print '┃            ┃            ┃ ' + _('total_transaction', str(totalCount).rjust(rJustCount)).decode('utf-8').ljust(61).encode('utf-8') + ' ┃ ' + getNiceAmount(incomingAmount + outgoingAmount, True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃            ┃'
+            else:
+                print '┃            ┃            ┃ ' + _('total_transactions', str(totalCount).rjust(rJustCount)).decode('utf-8').ljust(61).encode('utf-8') + ' ┃ ' + getNiceAmount(incomingAmount + outgoingAmount, True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃            ┃'
+            print '┗━━━━━━━━━━━━┻━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━┛'
+            if jsonObj['availableItems'] > transactionsCount:
+                print
+                print _('got_x_elements_of_y_available', transactionsCount, jsonObj['availableItems'])
+                print
+            #jsonObj['items'] = None
+            # print jsonObj
+            exit()
+        else:
+            print _('error_transactions_listing_failed_2', jsonObj['errorMessage'].encode('utf-8'), error=True)
+            printShortHelp()
+            exit()
+    else:
+        print
+        print _('error_transactions_listing_failed', response.status_code, response.content, error=True)
+        printShortHelp()
+        exit()
+
+
 def getAccount(accountToFind, accounts):
     accountToFindCleaned = accountToFind.replace(' ', '').replace('.', '').replace('#', '')
     for i, account in enumerate(accounts):
@@ -253,17 +393,17 @@ def getAccount(accountToFind, accounts):
 
 def validateTransfer(fromAccount, toAccount):
     if fromAccount is None:
-        print _('error_unknown_account', args.from_account)
+        print _('error_unknown_account', args.from_account, error=True)
         exit()
     if args.verbose:
         print 'Using from account ' + str(fromAccount)
     if toAccount is None:
-        print _('error_unknown_account', args.to_account)
+        print _('error_unknown_account', args.to_account, error=True)
         exit()
     if args.verbose:
         print 'Using to account ' + str(toAccount)
     if fromAccount['accountNumber'] == toAccount['accountNumber']:
-        print _('error_from_and_to_account_cannot_be_the_same')
+        print _('error_from_and_to_account_cannot_be_the_same', error=True)
         exit()
 
 
@@ -284,12 +424,12 @@ def doTransfer():
             exit()
         else:
             print
-            print _('error_transfer_failed_2', jsonObj['errorMessage'].encode('utf-8'))
+            print _('error_transfer_failed_2', jsonObj['errorMessage'].encode('utf-8'), error=True)
             printShortHelp()
             exit()
     else:
         print
-        print _('error_transfer_failed', response.status_code, response.content)
+        print _('error_transfer_failed', response.status_code, response.content, error=True)
         printShortHelp()
         exit()
 
@@ -306,9 +446,9 @@ except KeyboardInterrupt:  # User pressed ctrl+c
     exit()
 
 if args.command == 'accounts':
-    print _('welcome_back')
-    print
     printBalances()
     printShortHelp()
 elif args.command == 'transfer':
     doTransfer()
+elif args.command == 'trans':
+    printTransactions()
