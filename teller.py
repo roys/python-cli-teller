@@ -5,6 +5,7 @@
 # TODO: Translate everything to Norwegian
 # TODO: Clean up all the unicode stuff
 # TODO: Add reset to delete encrypted ID, secret and token from config file
+# TODO: RK + KREDITRENTER ==> Interest
 import configparser
 import locale
 import os
@@ -380,11 +381,11 @@ def printTransactions():
 
 
 def getAccount(accountToFind, accounts):
-    accountToFindCleaned = accountToFind.replace(' ', '').replace('.', '').replace('#', '')
+    accountToFindCleaned = accountToFind.replace(' ', '').replace('.', '').replace('#', '').decode('utf-8')
     for i, account in enumerate(accounts):
         if accountToFindCleaned == account['accountNumber']:
             return account
-        if accountToFind.lower() == account['name'].lower():
+        if accountToFind.decode('utf-8').lower() == account['name'].lower():
             return account
         if str(i + 1) == accountToFindCleaned:
             return account
