@@ -24,7 +24,7 @@ If you want to be able to just type `teller` in any directory instead of having 
 `ln -s $(pwd)/teller.py /usr/local/bin/teller`
 
 #### Initial setup
-If you didn't created the shortcut in the last example you have to type `python teller.py`. Otherwise:  
+If you didn't create the shortcut in the last example you have to type `python teller.py`. Otherwise:  
 `teller`
 
 You will now be asked for the client ID, client secret and your user id. The user ID is your social security number.
