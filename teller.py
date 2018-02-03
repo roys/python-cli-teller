@@ -221,7 +221,10 @@ def getAccessToken():
 
 def getNiceName(name):
     if args.anon:
-        return (name.decode('utf-8')[:3] + '*' * (len(name) - 3)).encode('utf-8')
+        if isinstance(name, unicode):
+            return name[:3] + '*' * (len(name) - 3)
+        else:
+            return (name.decode('utf-8')[:3] + '*' * (len(name) - 3)).encode('utf-8')
     return name
 
 
