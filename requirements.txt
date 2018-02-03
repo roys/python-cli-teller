@@ -1,0 +1,4 @@
+# Requirements file for pip install
+requests==2.18.4
+pycrypto==2.6.1
+python_dateutil==2.6.1
