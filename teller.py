@@ -29,7 +29,7 @@ if not config.has_section('general'):
     config.add_section('general')
 config.read(FILENAME_CONFIG)
 
-clientId = clientSecret = password = None
+clientId = clientSecret = userId = password = None
 
 
 def getLanguageConfig():
@@ -175,7 +175,7 @@ if firstRun:
 
 
 def getAccessToken():
-    global clientId, clientSecret
+    global clientId, clientSecret, password
     if not firstRun:
         password = getpass.getpass(_('enter_password_2'))
         clientId = AESCipher(password).decrypt(config.get('sbanken', 'clientId'))
