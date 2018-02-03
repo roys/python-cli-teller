@@ -29,6 +29,8 @@ if not config.has_section('general'):
     config.add_section('general')
 config.read(FILENAME_CONFIG)
 
+clientId = clientSecret = password = None
+
 
 def getLanguageConfig():
     defaultLanguage = locale.getdefaultlocale()[0]
@@ -143,14 +145,13 @@ if firstRun:
         clientId = raw_input(_('enter_client_id') + ' ')
         clientSecret = raw_input(_('enter_client_secret') + ' ')
         userId = raw_input(_('enter_user_id') + ' ')
+        print
+        print _('password_or_pin_if_you_want_to_store_data')
+        print
+        password = getpass.getpass(_('enter_password'))
     except KeyboardInterrupt:  # User pressed ctrl+c
         printShortHelp()
         exit()
-    print
-    print _('password_or_pin_if_you_want_to_store_data')
-    print
-    global password
-    password = getpass.getpass(_('enter_password'))
     isInputValid = True
     if len(clientId) == 0:
         isInputValid = False
@@ -174,10 +175,11 @@ if firstRun:
 
 
 def getAccessToken():
-    global password
-    password = getpass.getpass(_('enter_password_2'))
+    global clientId, clientSecret
+    if not firstRun:
+        password = getpass.getpass(_('enter_password_2'))
+        clientId = AESCipher(password).decrypt(config.get('sbanken', 'clientId'))
     printPleaseWait()
-    clientId = AESCipher(password).decrypt(config.get('sbanken', 'clientId'))
     if(config.has_option('sbanken', 'accessToken') and config.has_option('sbanken', 'accessTokenExpiration')):
         try:
             accessToken = AESCipher(password).decrypt(config.get('sbanken', 'accessToken'))
@@ -192,7 +194,8 @@ def getAccessToken():
             print _('error_failed_to_decrypt_token', error=True)
             printShortHelp()
             exit()
-    clientSecret = AESCipher(password).decrypt(config.get('sbanken', 'clientSecret'))
+    if not firstRun:
+        clientSecret = AESCipher(password).decrypt(config.get('sbanken', 'clientSecret'))
 
     if args.verbose:
         print 'Getting a fresh access token.'
@@ -201,11 +204,12 @@ def getAccessToken():
     if response.status_code == 200:
         json = response.json()
         accessToken = json['access_token']
-        accessTokenExpiration = str(int(time.time()) + int(json['expires_in']))
-        aesCipher = AESCipher(password)
-        config.set('sbanken', 'accessToken', aesCipher.encrypt(accessToken))
-        config.set('sbanken', 'accessTokenExpiration', aesCipher.encrypt(accessTokenExpiration))
-        storeConfig()
+        if config.has_section('sbanken'):  # User wants to store credentials
+            accessTokenExpiration = str(int(time.time()) + int(json['expires_in']))
+            aesCipher = AESCipher(password)
+            config.set('sbanken', 'accessToken', aesCipher.encrypt(accessToken))
+            config.set('sbanken', 'accessTokenExpiration', aesCipher.encrypt(accessTokenExpiration))
+            storeConfig()
         return accessToken
     else:
         print
@@ -255,7 +259,9 @@ def getNiceTransactionType(transactionType):
 
 
 def getAccountData():
-    userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
+    global userId
+    if userId is None:
+        userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
     headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json'}
     response = requests.get('https://api.sbanken.no/bank/api/v1/accounts/' + userId, headers=headers)
     return response.json()
@@ -274,13 +280,14 @@ def printBalances():
 
 
 def printTransactions():
-    # print args
+    global userId
     accounts = getAccountData()['items']
     account = getAccount(args.account, accounts)
     if account is None:
         print _('error_unknown_account', args.account, error=True)
         exit()
-    userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
+    if userId is None:
+        userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
     headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json'}
     if args.start is not None and args.start != '':
         try:
@@ -409,11 +416,13 @@ def validateTransfer(fromAccount, toAccount):
 
 
 def doTransfer():
+    global userId
     accounts = getAccountData()['items']
     fromAccount = getAccount(args.from_account, accounts)
     toAccount = getAccount(args.to_account, accounts)
     validateTransfer(fromAccount, toAccount)
-    userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
+    if userId is None:
+        userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
     headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json'}
     transfer = {'FromAccount': fromAccount['accountNumber'], 'ToAccount': toAccount['accountNumber'], 'Amount': args.amount, 'Message': args.message}
     response = requests.post('https://api.sbanken.no/bank/api/v1/transfers/' + userId, headers=headers, data=json.dumps(transfer))
