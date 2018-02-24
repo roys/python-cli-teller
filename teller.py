@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 # TODO: Clean up everything :-)
 # TODO: Should commands be subject to L10N too?
-# TODO: Translate everything to Norwegian
 # TODO: Clean up all the unicode stuff
 # TODO: Add reset to delete encrypted ID, secret and token from config file
 # TODO: RK + KREDITRENTER ==> Interest
@@ -19,7 +18,7 @@ import json
 from aescipher import AESCipher
 import dateutil.parser
 
-VERSION = '1.0.3'
+VERSION = '1.0.4'
 FILENAME_CONFIG = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'config.ini')
 COLOR_ERROR = '\033[91m'
 COLOR_RESET = '\033[0m'
@@ -314,8 +313,6 @@ def printTransactions():
     response = requests.get('https://api.sbanken.no/bank/api/v1/transactions/' + userId + '/' + account['accountNumber'], headers=headers, params=params)
     if response.status_code == 200:
         jsonObj = response.json()
-        # TODO: Print num of trans
-        # TODO: {u'errorType': None, u'items': None, u'errorMessage': None, u'availableItems': 354, u'traceId': None, u'isError': False}
         if not jsonObj['isError']:
             transactions = jsonObj['items']
             transactionsCount = len(transactions)
@@ -372,8 +369,6 @@ def printTransactions():
                 print
                 print _('got_x_elements_of_y_available', transactionsCount, jsonObj['availableItems'])
                 print
-            #jsonObj['items'] = None
-            # print jsonObj
             exit()
         else:
             print _('error_transactions_listing_failed_2', jsonObj['errorMessage'].encode('utf-8'), error=True)
