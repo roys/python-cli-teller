@@ -82,12 +82,8 @@ def _(key, *args, **kwargs):
 
 def printShortHelp():
     print
-    print 'Type \'teller --help\' for a list of all available commnads.'
+    print _('short_help_description')
     print
-
-
-def printHelp():
-    print _('help_description')
 
 
 def printPleaseWait():
