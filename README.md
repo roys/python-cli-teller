@@ -1,6 +1,8 @@
 ## `teller` - a command-line bank teller
 This open-source bank teller can be used to access your bank balances in [Sbanken](https://sbanken.no) using [their open APIs](https://utvikler.sbanken.no/).
 
+<img src="https://github.com/roys/python-cli-teller/raw/master/misc/screenshots/teller.png" width="640"/>
+
 ### Features
  - See your account balances
  - Transfer money between your own accounts
