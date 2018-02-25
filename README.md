@@ -64,3 +64,9 @@ This is a pretty neat function. Be sure to read about all the other options for 
 
 To e.g. sum up all interests for the year 2017 you could write as follows:  
 `teller trans -s kreditrenter brukskonto "1 jan 2017" "31 dec 2017"`
+
+#### Changing the language
+The script has language support for English and Norwegian. English is default, but it's very easy to change the preferred language:  
+`teller -l {no|en}`
+
+The language strings can be found in the `strings_*.ini` files.
