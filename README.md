@@ -9,6 +9,9 @@ This open-source bank teller can be used to access your bank balances in [Sbanke
  - List and see totals of your transactions
  - Search in your transactions
 
+ ### Video demo
+[![YouTube demo of bank teller](https://img.youtube.com/vi/E34x4dx_Ezo/0.jpg)](https://youtu.be/E34x4dx_Ezo)
+
 ### Getting started
 #### Prerequisites
  - You must have [Python 2.x](https://www.python.org/) installed
