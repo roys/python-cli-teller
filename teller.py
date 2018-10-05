@@ -195,7 +195,7 @@ def getAccessToken():
     if args.verbose:
         print 'Getting a fresh access token.'
     headers = {'Authorization': 'Basic ' + base64.b64encode(clientId + ':' + clientSecret), 'Accept': 'application/json'}
-    response = requests.post('https://api.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
+    response = requests.post('https://auth.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
     if response.status_code == 200:
         json = response.json()
         accessToken = json['access_token']
@@ -260,8 +260,8 @@ def getAccountData():
     global userId
     if userId is None:
         userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
-    headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json'}
-    response = requests.get('https://api.sbanken.no/bank/api/v1/accounts/' + userId, headers=headers)
+    headers = {'Authorization': 'Bearer ' + accessToken, 'customerId': userId, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+    response = requests.get('https://api.sbanken.no/bank/api/v1/accounts', headers=headers)
     return response.json()
 
 
@@ -286,7 +286,7 @@ def printTransactions():
         exit()
     if userId is None:
         userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
-    headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json'}
+    headers = {'Authorization': 'Bearer ' + accessToken, 'customerId': userId, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
     if args.start is not None and args.start != '':
         try:
             args.start = dateutil.parser.parse(args.start, fuzzy=True)
@@ -310,7 +310,8 @@ def printTransactions():
         print _('using_start_date', args.start)
         print
     params = {'index': args.index, 'length': args.quantity, 'startDate': args.start, 'endDate': args.end}
-    response = requests.get('https://api.sbanken.no/bank/api/v1/transactions/' + userId + '/' + account['accountNumber'], headers=headers, params=params)
+    # print account
+    response = requests.get('https://api.sbanken.no/bank/api/v1/transactions/' + account['accountId'], headers=headers, params=params)
     if response.status_code == 200:
         jsonObj = response.json()
         if not jsonObj['isError']:
@@ -371,7 +372,7 @@ def printTransactions():
                 print
             exit()
         else:
-            print _('error_transactions_listing_failed_2', jsonObj['errorMessage'].encode('utf-8'), error=True)
+            print _('error_transactions_listing_failed', jsonObj['errorMessage'].encode('utf-8'), error=True)
             printShortHelp()
             exit()
     else:
@@ -417,9 +418,9 @@ def doTransfer():
     validateTransfer(fromAccount, toAccount)
     if userId is None:
         userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
-    headers = {'Authorization': 'Bearer ' + accessToken, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json'}
-    transfer = {'FromAccount': fromAccount['accountNumber'], 'ToAccount': toAccount['accountNumber'], 'Amount': args.amount, 'Message': args.message}
-    response = requests.post('https://api.sbanken.no/bank/api/v1/transfers/' + userId, headers=headers, data=json.dumps(transfer))
+    headers = {'Authorization': 'Bearer ' + accessToken, 'customerId': userId, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+    transfer = {'fromAccountId': fromAccount['accountId'], 'toAccountId': toAccount['accountId'], 'amount': args.amount, 'message': args.message}
+    response = requests.post('https://api.sbanken.no/bank/api/v1/transfers', headers=headers, data=json.dumps(transfer))
     # This one gives HTTP 200 even on some errors
     if response.status_code == 200:
         jsonObj = response.json()
