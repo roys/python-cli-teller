@@ -39,11 +39,11 @@ If you want to run `teller` without having to enter all those credentials you ca
 ## Running the program
 You can print the help using `teller -h` or `teller --help`. To get help for one specifc command you can type `teller {comand} -h`, e.g. `teller trans -h`.
 
-### List balances
+### List balances 💵
 Listing the balances is the default command (and an alias of typing `teller accounts`):  
 `teller`
 
-### Transfer money
+### Transfer money ↔️
 To transfer money between your accounts you just type as follows:  
 `teller transfer {from account number/name/position} {to account number/name/position} {amount} [message]`
 
@@ -51,7 +51,7 @@ The account "position" is the position that is printed in the left column when d
 
 The message is optional. If you have a message with several words you need to use an apostrophe (') or quotation mark (") in the start and end of the message.
 
-### List transactions
+### List transactions 📃
 To list the transactions for the last 30 days you just type:  
 `teller trans {account number/name/position}`
 
@@ -62,13 +62,13 @@ You can also specify a start date of the the transaction and an optional end dat
 
 The date format is relatively forgiving, so you can choose between typing e.g. `1 july 2017` and `2017-07-01`.
 
-### Search transactions
+### Search transactions 🔍
 This is a pretty neat function. Be sure to read about all the other options for listing transactions. In addition to the listing `teller` can do a local search from the data returned and only show those and the sum of those.
 
 To e.g. sum up all interests for the year 2017 you could write as follows:  
 `teller trans -s kreditrenter brukskonto "1 jan 2017" "31 dec 2017"`
 
-### Changing the language
+### Changing the language 🇬🇧 🇺🇸 🇳🇴
 The script has language support for English and Norwegian. English is default, but it's very easy to change the preferred language:  
 `teller -l {no|en}`
 
