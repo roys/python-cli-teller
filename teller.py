@@ -17,6 +17,7 @@ import argparse
 import json
 from aescipher import AESCipher
 import dateutil.parser
+import urllib
 
 VERSION = '1.0.4'
 FILENAME_CONFIG = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'config.ini')
@@ -194,7 +195,7 @@ def getAccessToken():
 
     if args.verbose:
         print 'Getting a fresh access token.'
-    headers = {'Authorization': 'Basic ' + base64.b64encode(clientId + ':' + clientSecret), 'Accept': 'application/json'}
+    headers = {'Authorization': 'Basic ' + base64.b64encode(urllib.quote_plus(clientId) + ':' + urllib.quote_plus(clientSecret)), 'Accept': 'application/json'}
     response = requests.post('https://auth.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
     if response.status_code == 200:
         json = response.json()
