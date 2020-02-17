@@ -199,7 +199,7 @@ def getAccessToken():
     response = requests.post('https://auth.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
     if response.status_code == 200:
         json = response.json()
-        accessToken = json['access_token']
+        accessToken = str(json['access_token'])
         if config.has_section('sbanken'):  # User wants to store credentials
             accessTokenExpiration = str(int(time.time()) + int(json['expires_in']))
             aesCipher = AESCipher(password)
