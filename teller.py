@@ -262,7 +262,7 @@ def getAccountData():
     if userId is None:
         userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
     headers = {'Authorization': 'Bearer ' + accessToken, 'customerId': userId, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
-    response = requests.get('https://api.sbanken.no/bank/api/v1/accounts', headers=headers)
+    response = requests.get('https://api.sbanken.no/exec.bank/api/v1/accounts', headers=headers)
     return response.json()
 
 
@@ -312,7 +312,7 @@ def printTransactions():
         print
     params = {'index': args.index, 'length': args.quantity, 'startDate': args.start, 'endDate': args.end}
     # print account
-    response = requests.get('https://api.sbanken.no/bank/api/v1/transactions/' + account['accountId'], headers=headers, params=params)
+    response = requests.get('https://api.sbanken.no/exec.bank/api/v1/transactions/' + account['accountId'], headers=headers, params=params)
     if response.status_code == 200:
         jsonObj = response.json()
         if not jsonObj['isError']:
@@ -421,7 +421,7 @@ def doTransfer():
         userId = AESCipher(password).decrypt(config.get('sbanken', 'userId'))
     headers = {'Authorization': 'Bearer ' + accessToken, 'customerId': userId, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
     transfer = {'fromAccountId': fromAccount['accountId'], 'toAccountId': toAccount['accountId'], 'amount': args.amount, 'message': args.message}
-    response = requests.post('https://api.sbanken.no/bank/api/v1/transfers', headers=headers, data=json.dumps(transfer))
+    response = requests.post('https://api.sbanken.no/exec.bank/api/v1/transfers', headers=headers, data=json.dumps(transfer))
     # This one gives HTTP 200 even on some errors
     if response.status_code == 200:
         jsonObj = response.json()
