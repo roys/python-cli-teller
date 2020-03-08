@@ -2,7 +2,7 @@
 import base64
 from Crypto.Cipher import AES
 from Crypto import Random
-import md5
+from hashlib import md5
 
 BS = 16
 def pad(s): return s + (BS - len(s) % BS) * chr(BS - len(s) % BS)
@@ -10,7 +10,7 @@ def unpad(s): return s[:-ord(s[len(s) - 1:])]
 
 class AESCipher:
     def __init__(self, key):
-        self.key = md5.md5(key).digest()
+        self.key = md5(key).digest()
 
     def encrypt(self, raw):
         raw = pad(raw)
