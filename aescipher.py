@@ -10,7 +10,7 @@ def unpad(s): return s[:-ord(s[len(s) - 1:])]
 
 class AESCipher:
     def __init__(self, key):
-        self.key = md5(key).digest()
+        self.key = md5(key.encode('utf-8')).digest()
 
     def encrypt(self, raw):
         raw = pad(raw)
