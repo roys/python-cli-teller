@@ -4,16 +4,21 @@ from bank.sbanken import Sbanken
 from bank.demobank import DemoBank
 import cmd
 import configparser
+import datetime
+import dateutil.parser
 import getpass
 import locale
 import os
 import sys
 import time
 
+
 VERSION = '2.0.0'
 FILENAME_CONFIG = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'config.ini')
+COLOR_OK = '\033[92m'
 COLOR_ERROR = '\033[91m'
 COLOR_RESET = '\033[0m'
+COLOR_BLUE = '\x1b[34m'
 
 config = configparser.ConfigParser()
 if not config.has_section('general'):
@@ -37,7 +42,7 @@ def getLanguageConfig():
         pass
     try:
         langConfig.read(os.path.join(os.path.dirname(os.path.realpath(
-            __file__)), 'strings_' + config.get('general', 'language') + '.ini'))
+            __file__)), 'strings_v2_' + config.get('general', 'language') + '.ini'))
     except (configparser.NoOptionError, configparser.NoSectionError, configparser.MissingSectionHeaderError):
         pass
     return langConfig
@@ -69,6 +74,112 @@ def _(key, *args, **kwargs):
     return value
 
 
+class Column():
+    def __init__(self, text, justification='LEFT', min_width=0):
+        self.text = text
+        self.width = max(min_width, 0 if text is None else len(text.replace(COLOR_ERROR, '').replace(COLOR_RESET, '')) + 2)
+        self.justification = justification
+
+    def calculate_width(self, width):
+        return max(width, self.width)
+
+    def set_width(self, width):
+        self.width = width
+
+    def __str__(self):
+        if self.text is None:
+            return ' ' * self.width
+        extra = 9 if COLOR_RESET in self.text else 0
+        if self.justification == 'RIGHT':
+            return ' ' + self.text.rjust(self.width - 2 + extra, ' ') + ' '
+        return ' ' + self.text.ljust(self.width - 2 + extra, ' ') + ' '
+
+
+class Row():
+    def __init__(self):
+        self.columns = []
+
+    def add(self, column):
+        self.columns.append(column)
+
+    def calculate_widths(self, widths):
+        if widths is None:
+            widths = [0] * len(self.columns)
+        for i in range(len(widths)):
+            try:
+                widths[i] = self.columns[i].calculate_width(widths[i])
+            except IndexError:
+                pass
+        return widths
+
+    def set_widths(self, widths):
+        for i in range(len(widths)):
+            try:
+                self.columns[i].set_width(widths[i])
+            except IndexError:
+                pass
+
+    def __str__(self):
+        output = '┃'
+        for column in self.columns:
+            output += str(column)
+            output += '┃'
+        return output
+
+
+class HeaderRow(Row):
+    def __init__(self):
+        super().__init__()
+
+    def __str__(self):
+        output = ''
+        for i, column in enumerate(self.columns):
+            if i == 0:
+                output += '┏'
+            else:
+                output += '┳'
+            output += '━' * column.width
+        output += '┓\n'
+        output += super().__str__()
+        for i, column in enumerate(self.columns):
+            if i == 0:
+                output += '\n┣'
+            else:
+                output += '╋'
+            output += '━' * column.width
+        output += '┫'
+        return output
+
+
+class Table():
+    def __init__(self):
+        self.rows = []
+
+    def add(self, row):
+        self.rows.append(row)
+
+    def __str__(self):
+        widths = None
+        for row in self.rows:
+            widths = row.calculate_widths(widths)
+        output = '\n'
+        last_row = None
+        for row in self.rows:
+            row.set_widths(widths)
+            output += str(row) + '\n'
+            last_row = row
+        if last_row is not None:
+            for i, column in enumerate(last_row.columns):
+                if i == 0:
+                    output += '┗'
+                else:
+                    output += '┻'
+                output += '━' * column.width
+            output += '┛'
+        output += '\n'
+        return output
+
+
 class Teller(cmd.Cmd):
     doc_header = _('doc_header')
     undoc_header = _('undoc_header')
@@ -79,11 +190,25 @@ class Teller(cmd.Cmd):
         self.bank = bank
         self.verbose = verbose
         self.anonymize = anonymize
-        self.current_directory = bank.get_id()
+        self.current_directory = bank.get_name()
         self.current_directory_type = 'top_level'
+        self.current_account = None
         print(_('connecting_to_the_bank'))
         self.print_balances()
         self.set_prompt()
+        self.aliases = {'dir': self.do_ls,
+                        'list': self.do_ls,
+                        'q': self.do_exit,
+                        'quit': self.do_exit,
+                        'w': self.do_whoami,
+                        'h': self.do_help}
+
+    def default(self, line):
+        cmd, arg, line = self.parseline(line)
+        if cmd in self.aliases:
+            self.aliases[cmd](arg)
+        else:
+            print("*** Unknown syntax: %s" % line)
 
     def get_nice_account_no(self, accountNo):
         if args.anon:
@@ -101,7 +226,7 @@ class Teller(cmd.Cmd):
             return name[:3] + '*' * (len(name) - 3)
         return name
 
-    def get_nice_amount(self, amount, includeCurrencySymbol):
+    def get_nice_amount(self, amount, includeCurrencySymbol=True):
         # Wasn't happy with the no_no currency formatting, so doing this custom thingy instead:
         if includeCurrencySymbol:
             amount = locale.format_string('%.2f', amount, grouping=True, monetary=True) + ' ' + _('currency_symbol')
@@ -113,8 +238,76 @@ class Teller(cmd.Cmd):
             return ('*' * 7) + amount[-4:]
         return amount
 
+    def get_nice_date(self, date_str, red_if_overdue=False):
+        if red_if_overdue:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            due_day = dateutil.parser.parse(date_str)
+            diff = due_day - now
+            if diff.days < 0:
+                return COLOR_ERROR + due_day.strftime(_('date_format')) + COLOR_RESET
+        return dateutil.parser.parse(date_str).strftime(_('date_format'))
+
+    def get_nice_expiry_date(self, date_str):
+        return dateutil.parser.parse(date_str).strftime(_('date_format_expiry'))
+
+    def get_nice_card_product(self, product):
+        if product == 'DebitCard' or product == 'DebitCardCL':
+            return _('debit')
+        if product == 'CreditCard' or product == 'CreditCardCL':
+            return _('credit')
+        return product
+
+    def get_nice_card_status(self, status):
+        if status == 'Active':
+            return COLOR_OK + _('active') + COLOR_RESET
+        if status == 'Deleted':
+            return COLOR_ERROR + _('deleted') + COLOR_RESET
+        return status
+
+    def get_nice_card_owner(self, owner_id):
+        if owner_id == self.bank.user_id:
+            return _('owner_you')
+        return owner_id[0:6]
+
+    def get_nice_efaktura_type(self, efaktura_type):
+        if efaktura_type == 'EFAKTURA_AVTALEGIRO':
+            return _('efaktura_with_avtalegiro')
+        if efaktura_type == 'EFAKTURA':
+            return _('efaktura')
+        return efaktura_type
+
+    def get_nice_efaktura_status(self, status):
+        if status == 'PROCESSED':
+            return COLOR_OK + _('processed') + COLOR_RESET
+        if status == 'NEW':
+            return COLOR_BLUE + _('new') + COLOR_RESET
+        return status
+
+    def get_nice_payment_status(self, status1, status2):
+        if status1 == 'Active' and status2 == 'Active':
+            return _('active')
+        if status1 == 'Active' and status2 == 'NoFunds':
+            return COLOR_ERROR + _('no_funds') + COLOR_RESET
+        if status1 == status2:
+            return status1
+        return status1 + '/' + status2
+
+    def get_nice_payment_type(self, type1, type2):
+        if type1 == 'Nettgiro' and type2 == 'Efaktura':
+            return _('efaktura')
+        if type1 == 'StandingOrder' and type2 == 'TransferBetweenPayersOwnAccounts':
+            return _('transfer')
+        if type1 == 'Avtalegiro':
+            return _('avtalegiro')
+        if type1 == 'Nettgiro' and type2 == 'PaymentWithStatement':
+            return _('invoice')
+        if type1 == 'Loan':
+            return _('loan')
+        return type1
+
     def print_balances(self):
         accountData = self.bank.get_account_data()
+        print()
         print('┏━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┓')
         print('┃  # ┃ ' + str(_('account_number')).ljust(14) + ' ┃ ' + str(_('account_name')).ljust(25) + ' ┃ ' + str(_('bank_balance')).ljust(15) + ' ┃ ' + str(_('book_balance')).ljust(15) + ' ┃')
         print('┣━━━━╋━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━┫')
@@ -122,25 +315,205 @@ class Teller(cmd.Cmd):
             print('┃' + str(i + 1).rjust(3, ' ') + ' ┃ ' + str(self.get_nice_account_no(account['accountNumber']).rjust(14, ' ')) + ' ┃ ' + self.get_nice_name(account['name']).rjust(25, ' ') + ' ┃ ' + self.get_nice_amount(account['available'], True).rjust(15, ' ') + ' ┃ ' + self.get_nice_amount(account['balance'], True).rjust(15, ' ') + ' ┃')
         print('┗━━━━┻━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┛')
         print()
-        print('💰')
+        # print('💰')
+
+    def print_transactions(self):
+        pass
+
+    def print_cards(self):
+        card_data = self.bank.get_card_data()
+        account_data = self.bank.get_account_data()
+        print()
+        print('┏━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┓')
+        print('┃  # ┃ ' + str(_('account_number')).ljust(14) + ' ┃ ' + str(_('account_name')).ljust(25) + ' ┃ ' + str(_('card_number')).ljust(16) + ' ┃ ' + str(_('expiry_date')).ljust(10) + ' ┃ ' + str(_('card_type')).ljust(7) + ' ┃ ' + str(_('card_owner')).ljust(6) + ' ┃ ' + str(_('status')).ljust(7) + ' ┃ ')
+        print('┣━━━━╋━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━╋━━━━━━━━━╋━━━━━━━━╋━━━━━━━━━┫')
+        for i, card in enumerate(card_data['items']):
+            account_name = ''
+            for j, account in enumerate(account_data['items']):
+                if card['accountNumber'] == account['accountNumber']:
+                    account_name = self.get_nice_name(account['name'])
+                    break
+            print('┃' + str(i + 1).rjust(3, ' ') + ' ┃ ' + str(self.get_nice_account_no(card['accountNumber']).rjust(14, ' ')) + ' ┃ ' + account_name.rjust(25, ' ') + ' ┃ ' + card['cardNumber'] + ' ┃ ' + self.get_nice_expiry_date(card['expiryDate']).rjust(10, ' ') + ' ┃ ' + self.get_nice_card_product(card['productCode']).ljust(7, ' ') + ' ┃ ' + self.get_nice_card_owner(card['customerId']).ljust(6, ' ') + ' ┃ ' + self.get_nice_card_status(card['status']).ljust(16, ' ') + ' ┃')
+            # print(card)
+        print('┗━━━━┻━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━┻━━━━━━━━━┻━━━━━━━━┻━━━━━━━━━┛')
+        print()
+
+    def print_due_payments(self):
+        if self.current_account:
+            self.print_due_payments_for_account(self.current_account['accountId'])
+        else:
+            account_data = self.bank.get_account_data()
+            for account in account_data['items']:
+                self.print_due_payments_for_account(account['accountId'])
+
+    def print_due_payments_for_account(self, account_id):
+        payments_data = self.bank.get_due_payments_data(account_id)
+        if len(payments_data['items']) == 0:
+            return
+        table = Table()
+        header_row = HeaderRow()
+        header_row.add(Column(_('due_date')))
+        header_row.add(Column(_('recipient'), min_width=25))
+        header_row.add(Column(_('account_number')))
+        header_row.add(Column(_('amount')))
+        header_row.add(Column(_('kid_number')))
+        header_row.add(Column(_('text')))
+        header_row.add(Column(_('status')))
+        header_row.add(Column(_('type')))
+        table.add(header_row)
+        for payment in payments_data['items']:
+            print(payment)
+            row = Row()
+            row.add(Column(self.get_nice_date(payment['dueDate'], red_if_overdue=True)))
+            row.add(Column(payment['beneficiaryName']))
+            row.add(Column(self.get_nice_account_no(payment['recipientAccountNumber'])))
+            row.add(Column(self.get_nice_amount(payment['amount']), justification='RIGHT'))
+            row.add(Column(payment['kid']))
+            row.add(Column(payment['text'].strip() if(payment['text'] is not None and payment['text'] != payment['beneficiaryName']) else ''))
+            row.add(Column(self.get_nice_payment_status(payment['status'], payment['statusDetails'])))
+            row.add(Column(self.get_nice_payment_type(payment['productType'], payment['paymentType'])))
+            table.add(row)
+        print(table)
+
+    def print_efaktura(self):
+        efaktura_data = self.bank.get_efaktura_data()
+        print()
+        print('┏━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓')
+        print('┃  # ┃ ' + _('due_date').ljust(12) + ' ┃ ' + _('recipient').ljust(26) + ' ┃ ' + _('amount').ljust(15) + ' ┃ ' + _('efaktura_type').ljust(23) + ' ┃ ' + str(_('status')).ljust(6) + ' ┃ ')
+        print('┣━━━━╋━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━┫')
+        for i, efaktura in enumerate(efaktura_data['items']):
+            print('┃' + str(i + 1).rjust(3, ' ') + ' ┃ ' + self.get_nice_date(efaktura['originalDueDate']).ljust(12, ' ') + ' ┃ ' + efaktura['issuerName'].ljust(26, ' ') + ' ┃ ' + self.get_nice_amount(efaktura['originalAmount'], True).rjust(15, ' ') + ' ┃ ' + self.get_nice_efaktura_type(efaktura['documentType']).ljust(23, ' ') + ' ┃ ' + self.get_nice_efaktura_status(efaktura['status']).ljust(15, ' ') + ' ┃')
+            # print(efaktura)
+        print('┗━━━━┻━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━┛')
+        print()
 
     def set_prompt(self):
-        self.prompt = self.bank.get_id() + '> '
+        self.prompt = self.current_directory + '> '
 
     def do_cd(self, line):
-        print("hello")
+        if len(line) == 0:
+            return
+        accounts = self.bank.get_account_data()
+        if accounts and accounts['items']:
+            for account in accounts['items']:
+                if account['name'].lower() == line.lower() or self.get_nice_account_no(account['accountNumber']) == line or account['accountNumber'] == line:
+                    self.current_directory = account['name']
+                    self.current_directory_type = 'account'
+                    self.current_account = account
+                    self.set_prompt()
+                    return
+        if _('cards').lower() == line.lower():
+            if self.current_account:
+                self.current_directory = self.current_account['name'] + '/' + _('cards')
+            else:
+                self.current_directory = _('cards')
+            self.current_directory_type = 'cards'
+        if _('cards').lower() == line.lower():
+            if self.current_account:
+                self.current_directory = self.current_account['name'] + '/' + _('cards')
+            else:
+                self.current_directory = _('cards')
+            self.current_directory_type = 'cards'
+        if _('standing_orders').lower() == line.lower():
+            if self.current_account:
+                self.current_directory = self.current_account['name'] + '/' + _('standing_orders')
+            else:
+                self.current_directory = _('standing_orders')
+            self.current_directory_type = 'standing_orders'
+        if _('due_payments').lower() == line.lower():
+            if self.current_account:
+                self.current_directory = self.current_account['name'] + '/' + _('due_payments')
+            else:
+                self.current_directory = _('due_payments')
+            self.current_directory_type = 'due_payments'
+        if _('efaktura').lower() == line.lower():
+            self.current_directory = _('efaktura')
+            self.current_directory_type = 'efaktura'
+            self.current_account = None
+        if '..' == line:
+            if self.current_directory_type == 'account':
+                self.current_directory = bank.get_name()
+                self.current_directory_type = 'top_level'
+                self.current_account = None
+            else:
+                self.current_directory = self.current_account['name']
+                self.current_directory_type = 'account'
+        self.set_prompt()
 
     def help_cd(self):
         print(_('help_cd'))
 
     def complete_cd(self, text, line, begidx, endidx):
         # accounts = ['text: [' + text + ']', 'line: [' + line + ']', 'begidx: [' + str(begidx) + ']', 'endidx: [' + str(endidx) + ']']
-        # return accounts
-        return ['bruks']
+        complete = []
+        if self.current_directory_type != 'top_level' and (len(text) == 0 or '..'.startswith(text)):
+            complete.append('..')
+        accounts = self.bank.get_account_data()
+        if accounts and accounts['items']:
+            for account in accounts['items']:
+                if len(text) == 0:
+                    complete.append(account['name'])
+                elif self.get_nice_account_no(account['accountNumber']).startswith(text):
+                    complete.append(self.get_nice_account_no(account['accountNumber']))
+                elif account['accountNumber'].startswith(text):
+                    complete.append(self.get_nice_account_no(account['accountNumber']))
+                elif account['name'].lower().startswith(text.lower()):
+                    complete.append(account['name'])
+        if len(text) == 0 or _('cards').lower().startswith(text.lower()):
+            complete.append(_('cards'))
+        if len(text) == 0 or _('efaktura').lower().startswith(text.lower()):
+            complete.append(_('efaktura'))
+        if len(text) == 0 or _('standing_orders').lower().startswith(text.lower()):
+            complete.append(_('standing_orders'))
+        if len(text) == 0 or _('due_payments').lower().startswith(text.lower()):
+            complete.append(_('due_payments'))
+        return complete
+
+    def do_ls(self, line):
+        if self.current_directory_type == 'top_level':
+            self.print_balances()
+            # TODO
+        elif self.current_directory_type == 'account':
+            self.print_transactions()
+        elif self.current_directory_type == 'efaktura':
+            self.print_efaktura()
+        elif self.current_directory_type == 'cards':
+            self.print_cards()
+        elif self.current_directory_type == 'due_payments':
+            self.print_due_payments()
+
+    def help_ls(self):
+        print(_('help_ls'))
+
+    def complete_ls(self):
+        pass
+
+    complete_dir = complete_ls
+    complete_list = complete_ls
+
+    def do_whoami(self, line):
+        customer = self.bank.get_customer_info()['item']
+        print()
+        print('%s %s' % (customer['firstName'], customer['lastName']))
+        if customer['postalAddress']['addressLine1']:
+            print('%s' % customer['postalAddress']['addressLine1'])
+        if customer['postalAddress']['addressLine2']:
+            print('%s' % customer['postalAddress']['addressLine2'])
+        if customer['postalAddress']['addressLine3']:
+            print('%s' % customer['postalAddress']['addressLine3'])
+        if customer['postalAddress']['addressLine4']:
+            print('%s' % customer['postalAddress']['addressLine4'])
+        print()
+        print('%s' % customer['emailAddress'])
+        print('%s' % customer['phoneNumbers'][0]['number'])
+        print()
+
+    def help_whoami(self):
+        print(_('help_whoami'))
 
     def do_exit(self, line):
         print(_('good_bye'))
-        exit()
+        return -1
 
     def help_exit(self):
         print(_('help_exit'))
@@ -160,7 +533,6 @@ parser.add_argument("-v", "--verbose", help=_('args_help_verbose'), action='stor
 parser.add_argument('-V', '--version', action='version', version='%(prog)s version ' + VERSION + '. © 2018-2020 Roy Solberg - https://roysolberg.com.')
 parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
 args = parser.parse_args(sys.argv[1:])
-
 
 if args.lang is not None:
     if args.verbose:
@@ -183,6 +555,7 @@ def printPleaseWait():
 
 
 bank = None
+aesCipher = None
 
 if args.demo:
     bank = DemoBank()
@@ -226,25 +599,29 @@ else:
             exit()
     else:
         password = getpass.getpass(_('enter_password_2'))
-        client_id = AESCipher(password).decrypt(config.get(bank.get_id(), 'clientId'))
-        client_secret = AESCipher(password).decrypt(config.get(bank.get_id(), 'clientSecret'))
-        user_id = AESCipher(password).decrypt(config.get(bank.get_id(), 'userId'))
+        aesCipher = AESCipher(password)
+        client_id = aesCipher.decrypt(config.get(bank.get_id(), 'clientId'))
+        client_secret = aesCipher.decrypt(config.get(bank.get_id(), 'clientSecret'))
+        user_id = aesCipher.decrypt(config.get(bank.get_id(), 'userId'))
         if(config.has_option(bank.get_id(), 'accessToken') and config.has_option(bank.get_id(), 'accessTokenExpiration')):
             try:
-                access_token = AESCipher(password).decrypt(config.get(bank.get_id(), 'accessToken'))
-                access_token_expiration = int(AESCipher(password).decrypt(config.get(bank.get_id(), 'accessTokenExpiration')))
+                access_token = aesCipher.decrypt(config.get(bank.get_id(), 'accessToken'))
+                access_token_expiration = int(aesCipher.decrypt(config.get(bank.get_id(), 'accessTokenExpiration')))
                 if int(time.time()) >= access_token_expiration:
                     access_token = None
                     access_token_expiration = None
-            except ValueError:
+            except (ValueError, UnicodeDecodeError):
                 print(_('error_failed_to_decrypt_token', error=True))
                 printShortHelp()
                 exit()
-    bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, args.verbose, _)
-
+    bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, _, args.verbose)
 
 if __name__ == '__main__':
     try:
-        Teller(bank, args.verbose, args.anon).cmdloop()
+        teller = Teller(bank, args.verbose, args.anon)
+        teller.cmdloop()
     except KeyboardInterrupt:
-        exit()
+        pass
+    config.set(bank.get_id(), 'accessToken', aesCipher.encrypt(bank.access_token))
+    config.set(bank.get_id(), 'accessTokenExpiration', aesCipher.encrypt(str(bank.access_token_expiration)))
+    storeConfig()
