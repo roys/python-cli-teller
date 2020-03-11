@@ -431,7 +431,7 @@ class Teller(cmd.Cmd):
             self.current_directory_type = 'efaktura'
             self.current_account = None
         if '..' == line:
-            if self.current_directory_type == 'account':
+            if self.current_directory_type == 'account' or self.current_account is None:
                 self.current_directory = bank.get_name()
                 self.current_directory_type = 'top_level'
                 self.current_account = None
