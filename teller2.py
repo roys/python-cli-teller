@@ -76,6 +76,8 @@ def _(key, *args, **kwargs):
 
 class Column():
     def __init__(self, text, justification='LEFT', min_width=0):
+        if not isinstance(text, str):
+            text = str(text)
         self.text = text
         self.width = max(min_width, 0 if text is None else len(text.replace(COLOR_ERROR, '').replace(COLOR_RESET, '')) + 2)
         self.justification = justification
@@ -238,6 +240,13 @@ class Teller(cmd.Cmd):
             return ('*' * 7) + amount[-4:]
         return amount
 
+    def get_nice_transaction_type(self, transactionType):
+        if transactionType == 'RKI':
+            return _('transfer')
+        if transactionType == 'RK':
+            return _('purchase')
+        return transactionType
+
     def get_nice_date(self, date_str, red_if_overdue=False):
         if red_if_overdue:
             now = datetime.datetime.now(datetime.timezone.utc)
@@ -305,49 +314,96 @@ class Teller(cmd.Cmd):
             return _('loan')
         return type1
 
+    def get_ttl_hash(self, seconds=10):
+        """Return the same value withing `seconds` time period"""
+        return round(time.time() / seconds)
+
     def print_balances(self):
-        accountData = self.bank.get_account_data()
-        print()
-        print('┏━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┓')
-        print('┃  # ┃ ' + str(_('account_number')).ljust(14) + ' ┃ ' + str(_('account_name')).ljust(25) + ' ┃ ' + str(_('bank_balance')).ljust(15) + ' ┃ ' + str(_('book_balance')).ljust(15) + ' ┃')
-        print('┣━━━━╋━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━┫')
+        accountData = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
+        table = Table()
+        header_row = HeaderRow()
+        header_row.add(Column('#'))
+        header_row.add(Column(_('account_number')))
+        header_row.add(Column(_('account_name')))
+        header_row.add(Column(_('bank_balance')))
+        header_row.add(Column(_('book_balance')))
+        table.add(header_row)
         for i, account in enumerate(accountData['items']):
-            print('┃' + str(i + 1).rjust(3, ' ') + ' ┃ ' + str(self.get_nice_account_no(account['accountNumber']).rjust(14, ' ')) + ' ┃ ' + self.get_nice_name(account['name']).rjust(25, ' ') + ' ┃ ' + self.get_nice_amount(account['available'], True).rjust(15, ' ') + ' ┃ ' + self.get_nice_amount(account['balance'], True).rjust(15, ' ') + ' ┃')
-        print('┗━━━━┻━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┛')
-        print()
-        # print('💰')
+            row = Row()
+            row.add(Column(i + 1))
+            row.add(Column(self.get_nice_account_no(account['accountNumber'])))
+            row.add(Column(self.get_nice_name(account['name'])))
+            row.add(Column(self.get_nice_amount(account['available']), justification='RIGHT'))
+            row.add(Column(self.get_nice_amount(account['balance']), justification='RIGHT'))
+            table.add(row)
+        print(table)
 
     def print_transactions(self):
+        transactions_data = self.bank.get_transactions_data(self.current_account['accountId'], ttl_hash=self.get_ttl_hash())
+        print(transactions_data)
+        table = Table()
+        header_row = HeaderRow()
+        header_row.add(Column(_('accounting_date')))
+        header_row.add(Column(_('interest_date')))
+        header_row.add(Column(_('text'), min_width=61))
+        header_row.add(Column(_('amount')))
+        header_row.add(Column(_('type')))
+        table.add(header_row)
+        for payment in transactions_data['items']:
+            print(payment)
+            row = Row()
+            row.add(Column(self.get_nice_date(payment['accountingDate'])))
+            row.add(Column(self.get_nice_date(payment['interestDate'])))
+            row.add(Column(payment['text']))
+            row.add(Column(self.get_nice_amount(payment['amount']), justification='RIGHT'))
+            row.add(Column(self.get_nice_transaction_type(payment['transactionType'])))
+            table.add(row)
+        print(table)
         pass
 
     def print_cards(self):
-        card_data = self.bank.get_card_data()
-        account_data = self.bank.get_account_data()
-        print()
-        print('┏━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━┓')
-        print('┃  # ┃ ' + str(_('account_number')).ljust(14) + ' ┃ ' + str(_('account_name')).ljust(25) + ' ┃ ' + str(_('card_number')).ljust(16) + ' ┃ ' + str(_('expiry_date')).ljust(10) + ' ┃ ' + str(_('card_type')).ljust(7) + ' ┃ ' + str(_('card_owner')).ljust(6) + ' ┃ ' + str(_('status')).ljust(7) + ' ┃ ')
-        print('┣━━━━╋━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━╋━━━━━━━━━╋━━━━━━━━╋━━━━━━━━━┫')
+        card_data = self.bank.get_card_data(ttl_hash=self.get_ttl_hash())
+        account_data = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
+        table = Table()
+        header_row = HeaderRow()
+        header_row.add(Column('#'))
+        header_row.add(Column(_('account_number')))
+        header_row.add(Column(_('account_name')))
+        header_row.add(Column(_('card_number')))
+        header_row.add(Column(_('expiry_date')))
+        header_row.add(Column(_('card_type')))
+        header_row.add(Column(_('card_owner')))
+        header_row.add(Column(_('status')))
+        table.add(header_row)
         for i, card in enumerate(card_data['items']):
             account_name = ''
             for j, account in enumerate(account_data['items']):
                 if card['accountNumber'] == account['accountNumber']:
                     account_name = self.get_nice_name(account['name'])
                     break
-            print('┃' + str(i + 1).rjust(3, ' ') + ' ┃ ' + str(self.get_nice_account_no(card['accountNumber']).rjust(14, ' ')) + ' ┃ ' + account_name.rjust(25, ' ') + ' ┃ ' + card['cardNumber'] + ' ┃ ' + self.get_nice_expiry_date(card['expiryDate']).rjust(10, ' ') + ' ┃ ' + self.get_nice_card_product(card['productCode']).ljust(7, ' ') + ' ┃ ' + self.get_nice_card_owner(card['customerId']).ljust(6, ' ') + ' ┃ ' + self.get_nice_card_status(card['status']).ljust(16, ' ') + ' ┃')
+            row = Row()
+            row.add(Column(i + 1))
+            row.add(Column(self.get_nice_account_no(card['accountNumber'])))
+            row.add(Column(account_name))
+            row.add(Column(card['cardNumber']))
+            row.add(Column(self.get_nice_expiry_date(card['expiryDate'])))
+            row.add(Column(self.get_nice_card_product(card['productCode'])))
+            row.add(Column(self.get_nice_card_owner(card['customerId'])))
+            row.add(Column(self.get_nice_card_status(card['status'])))
+            table.add(row)
             # print(card)
-        print('┗━━━━┻━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━┻━━━━━━━━━┻━━━━━━━━┻━━━━━━━━━┛')
-        print()
+        print(table)
 
     def print_due_payments(self):
         if self.current_account:
             self.print_due_payments_for_account(self.current_account['accountId'])
         else:
-            account_data = self.bank.get_account_data()
+            account_data = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
             for account in account_data['items']:
                 self.print_due_payments_for_account(account['accountId'])
 
     def print_due_payments_for_account(self, account_id):
-        payments_data = self.bank.get_due_payments_data(account_id)
+        payments_data = self.bank.get_due_payments_data(account_id, ttl_hash=self.get_ttl_hash())
         if len(payments_data['items']) == 0:
             return
         table = Table()
@@ -376,16 +432,27 @@ class Teller(cmd.Cmd):
         print(table)
 
     def print_efaktura(self):
-        efaktura_data = self.bank.get_efaktura_data()
-        print()
-        print('┏━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┓')
-        print('┃  # ┃ ' + _('due_date').ljust(12) + ' ┃ ' + _('recipient').ljust(26) + ' ┃ ' + _('amount').ljust(15) + ' ┃ ' + _('efaktura_type').ljust(23) + ' ┃ ' + str(_('status')).ljust(6) + ' ┃ ')
-        print('┣━━━━╋━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━╋━━━━━━━━━━━━━━━━━━━━━━━━━╋━━━━━━━━┫')
+        efaktura_data = self.bank.get_efaktura_data(ttl_hash=self.get_ttl_hash())
+        table = Table()
+        header_row = HeaderRow()
+        header_row.add(Column('#'))
+        header_row.add(Column(_('due_date')))
+        header_row.add(Column(_('recipient')))
+        header_row.add(Column(_('amount')))
+        header_row.add(Column(_('efaktura_type')))
+        header_row.add(Column(_('status')))
+        table.add(header_row)
         for i, efaktura in enumerate(efaktura_data['items']):
-            print('┃' + str(i + 1).rjust(3, ' ') + ' ┃ ' + self.get_nice_date(efaktura['originalDueDate']).ljust(12, ' ') + ' ┃ ' + efaktura['issuerName'].ljust(26, ' ') + ' ┃ ' + self.get_nice_amount(efaktura['originalAmount'], True).rjust(15, ' ') + ' ┃ ' + self.get_nice_efaktura_type(efaktura['documentType']).ljust(23, ' ') + ' ┃ ' + self.get_nice_efaktura_status(efaktura['status']).ljust(15, ' ') + ' ┃')
+            row = Row()
+            row.add(Column(i + 1))
+            row.add(Column(self.get_nice_date(efaktura['originalDueDate'])))
+            row.add(Column(efaktura['issuerName']))
+            row.add(Column(self.get_nice_amount(efaktura['originalAmount'], True), justification='RIGHT'))
+            row.add(Column(self.get_nice_efaktura_type(efaktura['documentType'])))
+            row.add(Column(self.get_nice_efaktura_status(efaktura['status'])))
             # print(efaktura)
-        print('┗━━━━┻━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━┻━━━━━━━━━━━━━━━━━━━━━━━━━┻━━━━━━━━┛')
-        print()
+            table.add(row)
+        print(table)
 
     def set_prompt(self):
         self.prompt = self.current_directory + '> '
@@ -393,7 +460,7 @@ class Teller(cmd.Cmd):
     def do_cd(self, line):
         if len(line) == 0:
             return
-        accounts = self.bank.get_account_data()
+        accounts = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
         if accounts and accounts['items']:
             for account in accounts['items']:
                 if account['name'].lower() == line.lower() or self.get_nice_account_no(account['accountNumber']) == line or account['accountNumber'] == line:
@@ -448,7 +515,7 @@ class Teller(cmd.Cmd):
         complete = []
         if self.current_directory_type != 'top_level' and (len(text) == 0 or '..'.startswith(text)):
             complete.append('..')
-        accounts = self.bank.get_account_data()
+        accounts = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
         if accounts and accounts['items']:
             for account in accounts['items']:
                 if len(text) == 0:
@@ -492,7 +559,7 @@ class Teller(cmd.Cmd):
     complete_list = complete_ls
 
     def do_whoami(self, line):
-        customer = self.bank.get_customer_info()['item']
+        customer = self.bank.get_customer_info(ttl_hash=self.get_ttl_hash())['item']
         print()
         print('%s %s' % (customer['firstName'], customer['lastName']))
         if customer['postalAddress']['addressLine1']:

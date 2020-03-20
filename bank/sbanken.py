@@ -28,8 +28,8 @@ class Sbanken(IBank):
     def get_name(self):
         return 'Sbanken'
 
-    @lru_cache(maxsize=10)
-    def get_customer_info(self):
+    @lru_cache(maxsize=1)
+    def get_customer_info(self, ttl_hash=None):
         if self.verbose:
             print('Fetching customer info...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
@@ -57,8 +57,8 @@ class Sbanken(IBank):
             print(_('error_failed_to_authenticate', response.status_code, response.content, error=True))
         return None
 
-    @lru_cache(maxsize=10)
-    def get_account_data(self):
+    @lru_cache(maxsize=1)
+    def get_account_data(self, ttl_hash=None):
         if self.verbose:
             print('Fetching account data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
@@ -66,7 +66,15 @@ class Sbanken(IBank):
         return response.json()
 
     @lru_cache(maxsize=10)
-    def get_standing_orders_data(self, accountId):
+    def get_transactions_data(self, accountId, ttl_hash=None):
+        if self.verbose:
+            print('Fetching standing orders for account [%s]...' % accountId)
+        headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+        response = requests.get('https://api.sbanken.no/exec.bank/api/v1/transactions/%s' % accountId, headers=headers)
+        return response.json()
+
+    @lru_cache(maxsize=10)
+    def get_standing_orders_data(self, accountId, ttl_hash=None):
         if self.verbose:
             print('Fetching standing orders for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
@@ -74,7 +82,7 @@ class Sbanken(IBank):
         return response.json()
 
     @lru_cache(maxsize=10)
-    def get_due_payments_data(self, accountId):
+    def get_due_payments_data(self, accountId, ttl_hash=None):
         if self.verbose:
             print('Fetching due payments for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
@@ -84,8 +92,8 @@ class Sbanken(IBank):
         else:
             raise ApiException(response.status_code, response.text, response.headers, response.reason)
 
-    @lru_cache(maxsize=10)
-    def get_card_data(self):
+    @lru_cache(maxsize=1)
+    def get_card_data(self, ttl_hash=None):
         if self.verbose:
             print('Fetching card data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
@@ -95,8 +103,8 @@ class Sbanken(IBank):
         else:
             raise ApiException(response.status_code, response.text, response.headers, response.reason)
 
-    @lru_cache(maxsize=10)
-    def get_efaktura_data(self):
+    @lru_cache(maxsize=1)
+    def get_efaktura_data(self, ttl_hash=None):
         if self.verbose:
             print('Fetching eFaktura data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
