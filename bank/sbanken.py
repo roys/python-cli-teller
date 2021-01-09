@@ -5,6 +5,7 @@ import base64
 import requests
 import time
 import urllib
+import json
 
 
 def _(key, *args, **kwargs):
@@ -12,7 +13,7 @@ def _(key, *args, **kwargs):
 
 
 class Sbanken(IBank):
-    def __init__(self, client_id=None, client_secret=None, user_id=None, access_token=None, access_token_expiration=None, dictionary=None, verbose=False):
+    def __init__(self, client_id=None, client_secret=None, user_id=None, access_token=None, access_token_expiration=None, dictionary=None, verbose=False, print_raw_data=False):
         super().__init__()
         self.client_id = client_id
         self.client_secret = client_secret
@@ -20,6 +21,7 @@ class Sbanken(IBank):
         self.access_token = access_token
         self.access_token_expiration = access_token_expiration
         self.verbose = verbose
+        self.print_raw_data = print_raw_data
         _ = dictionary
 
     def get_id(self):
@@ -34,6 +36,9 @@ class Sbanken(IBank):
             print('Fetching customer info...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = requests.get('https://api.sbanken.no/exec.customers/api/v1/customers', headers=headers)
+        if self.print_raw_data:
+            print(response)
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
         return response.json()
 
     def get_access_token(self):
@@ -45,6 +50,9 @@ class Sbanken(IBank):
             print('Getting a fresh access token.')
         headers = {'Authorization': 'Basic ' + base64.b64encode((urllib.parse.quote_plus(self.client_id) + ':' + urllib.parse.quote_plus(self.client_secret)).encode('utf-8')).decode('utf-8'), 'Accept': 'application/json'}
         response = requests.post('https://auth.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
+        if self.print_raw_data:
+            print(response)
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
         if response.status_code == 200:
             json = response.json()
             if self.verbose:
@@ -63,6 +71,9 @@ class Sbanken(IBank):
             print('Fetching account data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = requests.get('https://api.sbanken.no/exec.bank/api/v1/accounts', headers=headers)
+        if self.print_raw_data:
+            print(response)
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
         return response.json()
 
     @lru_cache(maxsize=10)
@@ -71,6 +82,9 @@ class Sbanken(IBank):
             print('Fetching standing orders for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = requests.get('https://api.sbanken.no/exec.bank/api/v1/transactions/%s' % accountId, headers=headers)
+        if self.print_raw_data:
+            print(response)
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
         return response.json()
 
     @lru_cache(maxsize=10)
@@ -79,6 +93,9 @@ class Sbanken(IBank):
             print('Fetching standing orders for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = requests.get('https://api.sbanken.no/exec.bank/api/v1/standingorders/%s' % accountId, headers=headers)
+        if self.print_raw_data:
+            print(response)
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
         return response.json()
 
     @lru_cache(maxsize=10)
@@ -87,6 +104,9 @@ class Sbanken(IBank):
             print('Fetching due payments for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = requests.get('https://api.sbanken.no/exec.bank/api/v1/payments/%s' % accountId, headers=headers)
+        if self.print_raw_data:
+            print(response)
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
         if response.status_code == 200:
             return response.json()
         else:
@@ -98,6 +118,9 @@ class Sbanken(IBank):
             print('Fetching card data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = requests.get('https://api.sbanken.no/exec.bank/api/v1/cards', headers=headers)
+        if self.print_raw_data:
+            print(response)
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
         if response.status_code == 200:
             return response.json()
         else:
@@ -109,6 +132,9 @@ class Sbanken(IBank):
             print('Fetching eFaktura data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = requests.get('https://api.sbanken.no/exec.bank/api/v1/efakturas', headers=headers)
+        if self.print_raw_data:
+            print(response)
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
         if response.status_code == 200:
             return response.json()
         else:

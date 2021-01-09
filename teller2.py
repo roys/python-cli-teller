@@ -204,7 +204,8 @@ class Teller(cmd.Cmd):
                         'q': self.do_exit,
                         'quit': self.do_exit,
                         'w': self.do_whoami,
-                        'h': self.do_help}
+                        'h': self.do_help,
+                        '?': self.do_help}
 
     def default(self, line):
         cmd, arg, line = self.parseline(line)
@@ -279,18 +280,20 @@ class Teller(cmd.Cmd):
         return owner_id[0:6]
 
     def get_nice_efaktura_type(self, efaktura_type):
-        if efaktura_type == 'EFAKTURA_AVTALEGIRO':
-            return _('efaktura_with_avtalegiro')
-        if efaktura_type == 'EFAKTURA':
-            return _('efaktura')
-        return efaktura_type
+        value = _('efaktura_type_' + efaktura_type)
+        if value.startswith('efaktura_type_'): # No translation available - return type as-is
+            return efaktura_type
+        return value
 
     def get_nice_efaktura_status(self, status):
+        value = _('efaktura_status_' + status)
+        if value.startswith('efaktura_status_'): # No translation available - return type as-is
+            return status
         if status == 'PROCESSED':
-            return COLOR_OK + _('processed') + COLOR_RESET
+            return COLOR_OK + value + COLOR_RESET
         if status == 'NEW':
-            return COLOR_BLUE + _('new') + COLOR_RESET
-        return status
+            return COLOR_BLUE + value + COLOR_RESET
+        return value
 
     def get_nice_payment_status(self, status1, status2):
         if status1 == 'Active' and status2 == 'Active':
@@ -340,7 +343,6 @@ class Teller(cmd.Cmd):
 
     def print_transactions(self):
         transactions_data = self.bank.get_transactions_data(self.current_account['accountId'], ttl_hash=self.get_ttl_hash())
-        print(transactions_data)
         table = Table()
         header_row = HeaderRow()
         header_row.add(Column(_('accounting_date')))
@@ -350,7 +352,6 @@ class Teller(cmd.Cmd):
         header_row.add(Column(_('type')))
         table.add(header_row)
         for payment in transactions_data['items']:
-            print(payment)
             row = Row()
             row.add(Column(self.get_nice_date(payment['accountingDate'])))
             row.add(Column(self.get_nice_date(payment['interestDate'])))
@@ -391,7 +392,6 @@ class Teller(cmd.Cmd):
             row.add(Column(self.get_nice_card_owner(card['customerId'])))
             row.add(Column(self.get_nice_card_status(card['status'])))
             table.add(row)
-            # print(card)
         print(table)
 
     def print_due_payments(self):
@@ -418,7 +418,6 @@ class Teller(cmd.Cmd):
         header_row.add(Column(_('type')))
         table.add(header_row)
         for payment in payments_data['items']:
-            print(payment)
             row = Row()
             row.add(Column(self.get_nice_date(payment['dueDate'], red_if_overdue=True)))
             row.add(Column(payment['beneficiaryName']))
@@ -447,10 +446,12 @@ class Teller(cmd.Cmd):
             row.add(Column(i + 1))
             row.add(Column(self.get_nice_date(efaktura['originalDueDate'])))
             row.add(Column(efaktura['issuerName']))
-            row.add(Column(self.get_nice_amount(efaktura['originalAmount'], True), justification='RIGHT'))
+            if efaktura['updatedAmount']:
+                row.add(Column('* ' + self.get_nice_amount(efaktura['updatedAmount'], True), justification='RIGHT'))
+            else:
+                row.add(Column(self.get_nice_amount(efaktura['originalAmount'], True), justification='RIGHT'))
             row.add(Column(self.get_nice_efaktura_type(efaktura['documentType'])))
             row.add(Column(self.get_nice_efaktura_status(efaktura['status'])))
-            # print(efaktura)
             table.add(row)
         print(table)
 
@@ -597,6 +598,7 @@ parser.add_argument("-d", "--demo", help=_('args_help_demo'), action='store_true
 parser.add_argument("-l", "--lang", help=_('args_help_language'), action="store")
 parser.add_argument("-r", "--reset", help=_('args_help_reset'), action='store_true')
 parser.add_argument("-v", "--verbose", help=_('args_help_verbose'), action='store_true')
+parser.add_argument("--raw", help=_('args_help_raw'), action='store_true')
 parser.add_argument('-V', '--version', action='version', version='%(prog)s version ' + VERSION + '. © 2018-2020 Roy Solberg - https://roysolberg.com.')
 parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
 args = parser.parse_args(sys.argv[1:])
@@ -681,7 +683,7 @@ else:
                 print(_('error_failed_to_decrypt_token', error=True))
                 printShortHelp()
                 exit()
-    bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, _, args.verbose)
+    bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, _, args.verbose, args.raw)
 
 if __name__ == '__main__':
     try:
