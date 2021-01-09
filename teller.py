@@ -81,15 +81,15 @@ def _(key, *args, **kwargs):
 
 
 def printShortHelp():
-    print()
+    print('')
     print(_('short_help_description'))
-    print()
+    print('')
 
 
 def printPleaseWait():
-    print()
+    print('')
     print(_('please_wait'))
-    print()
+    print('')
 
 
 locale.setlocale(locale.LC_ALL, _('locale'))
@@ -306,10 +306,10 @@ def printTransactions():
             args.start = args.end
             args.end = temp
         print(_('using_start_date_and_end_date', args.start, args.end))
-        print()
+        print('')
     elif args.start is not None and args.start != '':
         print(_('using_start_date', args.start))
-        print()
+        print('')
     params = {'index': args.index, 'length': args.quantity, 'startDate': args.start, 'endDate': args.end}
     # print account
     response = requests.get('https://api.sbanken.no/exec.bank/api/v1/transactions/' + account['accountId'], headers=headers, params=params)
@@ -337,7 +337,7 @@ def printTransactions():
             outgoingAmount = 0
             outgoingCount = 0
             for transaction in transactions:
-                if args.search is None or args.search in transaction['text'].lower():
+                if args.search is None or args.search in transaction['text'].lower() or args.search in transaction['transactionType'].lower() or args.search in getNiceTransactionType(transaction['transactionType']).decode('utf-8').lower():
                     amount = transaction['amount']
                     print('┃ ' + dateutil.parser.parse(transaction['accountingDate']).strftime(_('date_format')).rjust(10, ' ') + ' ┃ ' + dateutil.parser.parse(transaction['interestDate']).strftime(_('date_format')).rjust(10, ' ') + ' ┃ ' + getNiceName(transaction['text'].encode('utf-8')).decode('utf-8').ljust(61).encode('utf-8') + ' ┃ ' + getNiceAmount(amount, True).decode('utf-8').rjust(15, ' ').encode('utf-8') + ' ┃ ' + getNiceTransactionType(transaction['transactionType']).decode('utf-8').ljust(10, ' ').encode('utf-8') + ' ┃')
                     if amount >= 0:
