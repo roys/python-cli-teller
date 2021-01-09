@@ -200,6 +200,7 @@ class Teller(cmd.Cmd):
         self.set_prompt()
         self.aliases = {'dir': self.do_ls,
                         'list': self.do_ls,
+                        'll': self.do_ls,
                         'q': self.do_exit,
                         'quit': self.do_exit,
                         'w': self.do_whoami,
@@ -241,11 +242,10 @@ class Teller(cmd.Cmd):
         return amount
 
     def get_nice_transaction_type(self, transactionType):
-        if transactionType == 'RKI':
-            return _('transfer')
-        if transactionType == 'RK':
-            return _('purchase')
-        return transactionType
+        value = _('transfer_' + transactionType)
+        if value.startswith('transfer_'): # No translation available - return type as-is
+            return transactionType
+        return value
 
     def get_nice_date(self, date_str, red_if_overdue=False):
         if red_if_overdue:
