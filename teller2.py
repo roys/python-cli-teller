@@ -9,6 +9,8 @@ import dateutil.parser
 import getpass
 import locale
 import os
+import platform
+import requests
 import sys
 import time
 
@@ -21,7 +23,7 @@ Demo
 Anonymizing
 """
 
-VERSION = '2.0.0'
+__version__ = '2.0.0'
 FILENAME_CONFIG = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'config.ini')
 COLOR_OK = '\033[92m'
 COLOR_ERROR = '\033[91m'
@@ -495,25 +497,81 @@ class Teller(cmd.Cmd):
         table = Table()
         header_row = HeaderRow()
         header_row.add(Column(_('due_date')))
-        header_row.add(Column(_('recipient'), min_width=25))
+        header_row.add(Column(_('recipient')))
         header_row.add(Column(_('account_number')))
         header_row.add(Column(_('amount')))
         header_row.add(Column(_('kid_number')))
         header_row.add(Column(_('text')))
         header_row.add(Column(_('status')))
         header_row.add(Column(_('type')))
+        header_row.add(Column(_('total')))
         table.add(header_row)
+        total = 0
         for payment in payments_data['items']:
+            amount = payment['amount']
             row = Row()
             row.add(Column(self.get_nice_date(payment['dueDate'], red_if_overdue=True)))
-            row.add(Column(payment['beneficiaryName']))
+            row.add(Column(payment['beneficiaryName'], min_width=31))
             row.add(Column(self.get_nice_account_no(payment['recipientAccountNumber'])))
-            row.add(Column(self.get_nice_amount(payment['amount']), justification='RIGHT'))
-            row.add(Column(payment['kid']))
-            row.add(Column(payment['text'].strip() if(payment['text'] is not None and payment['text'] != payment['beneficiaryName']) else ''))
+            row.add(Column(self.get_nice_amount(amount), justification='RIGHT'))
+            row.add(Column(payment['kid'], min_width=26))
+            row.add(Column(payment['text'].strip() if(payment['text'] is not None and payment['text'] != payment['beneficiaryName']) else '', min_width=27))
             row.add(Column(self.get_nice_payment_status(payment['status'], payment['statusDetails'])))
             row.add(Column(self.get_nice_payment_type(payment['productType'], payment['paymentType'])))
             table.add(row)
+            total += amount
+            row.add(Column(self.get_nice_amount(total), justification='RIGHT'))
+        footer_row = FooterRow()
+        footer_row.add(Column())
+        footer_row.add(Column())
+        footer_row.add(Column(_('total')))
+        footer_row.add(Column(self.get_nice_amount(total), justification='RIGHT'))
+        footer_row.add(Column())
+        footer_row.add(Column())
+        footer_row.add(Column())
+        footer_row.add(Column())
+        footer_row.add(Column())
+        table.add(footer_row)
+        print(table)
+
+    def print_standing_orders(self):
+        if self.current_account:
+            self.print_standing_orders_for_account(self.current_account['accountId'])
+        else:
+            account_data = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
+            for account in account_data['items']:
+                self.print_standing_orders_for_account(account['accountId'])
+
+    def print_standing_orders_for_account(self, account_id):
+        data = self.bank.get_standing_orders_data(account_id, ttl_hash=self.get_ttl_hash())
+        if len(data['items']) == 0:
+            return
+        table = Table()
+        header_row = HeaderRow()
+        header_row.add(Column(_('next_due_date')))
+        header_row.add(Column(_('recipient')))
+        header_row.add(Column(_('account_number')))
+        header_row.add(Column(_('amount')))
+        header_row.add(Column(_('frequency')))
+        table.add(header_row)
+        total = 0
+        for payment in data['items']:
+            amount = payment['amount']
+            row = Row()
+            row.add(Column(self.get_nice_date(payment['nextDueDate'])))
+            row.add(Column(payment['beneficiaryName'], min_width=31))
+            row.add(Column(self.get_nice_account_no(payment['creditAccountNumber'])))
+            row.add(Column(self.get_nice_amount(amount), justification='RIGHT'))
+            row.add(Column(_(payment['frequency'])))
+            table.add(row)
+            total += amount
+        footer_row = FooterRow()
+        footer_row.add(Column())
+        footer_row.add(Column())
+        footer_row.add(Column(_('total')))
+        footer_row.add(Column(self.get_nice_amount(total), justification='RIGHT'))
+        footer_row.add(Column())
+        table.add(footer_row)
         print(table)
 
     def print_efaktura(self):
@@ -628,6 +686,8 @@ class Teller(cmd.Cmd):
             self.print_cards()
         elif self.current_directory_type == 'due_payments':
             self.print_due_payments()
+        elif self.current_directory_type == 'standing_orders':
+            self.print_standing_orders()
 
     def help_ls(self):
         print(_('help_ls'))
@@ -679,7 +739,7 @@ parser.add_argument("-r", "--reset", help=_('args_help_reset'), action='store_tr
 parser.add_argument("-v", "--verbose", help=_('args_help_verbose'), action='store_true')
 parser.add_argument("--raw", help=_('args_help_raw'), action='store_true')
 copyright_year = str(max(datetime.datetime.now().year, 2021))
-parser.add_argument('-V', '--version', action='version', version='%(prog)s version ' + VERSION + '. © 2018-' + copyright_year + ' Roy Solberg - https://roysolberg.com.')
+parser.add_argument('-V', '--version', action='version', version='%(prog)s version ' + __version__ + '. © 2018-' + copyright_year + ' Roy Solberg - https://roysolberg.com.')
 parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
 args = parser.parse_args(sys.argv[1:])
 
@@ -702,6 +762,8 @@ def printPleaseWait():
     print(_('please_wait'))
     print()
 
+def get_user_agent():
+    return 'teller/' + __version__ + ' (' + platform.system() + ' ' + platform.release() + ') Python/' + platform.python_version() + ' python-requests/' + requests.__version__
 
 bank = None
 aesCipher = None
@@ -763,7 +825,7 @@ else:
             print(_('error_failed_to_decrypt_token', error=True))
             printShortHelp()
             exit()
-    bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, _, args.verbose, args.raw)
+    bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, get_user_agent(), _, args.verbose, args.raw)
 
 if __name__ == '__main__':
     try:
