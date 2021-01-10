@@ -111,7 +111,11 @@ class Sbanken(IBank):
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
         if response.status_code == 200:
-            return response.json()
+            # TODO: Eh, why is the order seemingly random and not by date?
+            #return response.json()
+            parsed = response.json()
+            parsed['items'].sort(key=lambda x: x['dueDate'], reverse=False)
+            return parsed
         else:
             raise ApiException(response.status_code, response.text, response.headers, response.reason)
 

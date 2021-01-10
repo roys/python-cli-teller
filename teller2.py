@@ -259,7 +259,10 @@ class Teller(cmd.Cmd):
             return name[:3] + '*' * (len(name) - 3)
         return name
 
-    def get_nice_amount(self, amount, includeCurrencySymbol=True):
+    def get_nice_amount(self, amount, includeCurrencySymbol=True, red_if_minus=False):
+        color_output = False
+        if red_if_minus and amount < 0:
+            color_output = True
         # Wasn't happy with the no_no currency formatting, so doing this custom thingy instead:
         if includeCurrencySymbol:
             amount = locale.format_string('%.2f', amount, grouping=True, monetary=True) + ' ' + _('currency_symbol')
@@ -269,6 +272,8 @@ class Teller(cmd.Cmd):
             if includeCurrencySymbol:
                 return ('*' * 7) + amount[-(len(' ' + _('currency_symbol')) + 4):]
             return ('*' * 7) + amount[-4:]
+        if color_output:
+            return COLOR_ERROR + amount + COLOR_RESET
         return amount
 
     def get_nice_transaction_type(self, transactionType):
@@ -484,16 +489,24 @@ class Teller(cmd.Cmd):
 
     def print_due_payments(self):
         if self.current_account:
-            self.print_due_payments_for_account(self.current_account['accountId'])
+            self.print_due_payments_for_account(self.current_account['accountId'], None)
         else:
             account_data = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
             for account in account_data['items']:
-                self.print_due_payments_for_account(account['accountId'])
+                self.print_due_payments_for_account(account['accountId'], account['name'])
 
-    def print_due_payments_for_account(self, account_id):
+    def print_due_payments_for_account(self, account_id, header = None):
         payments_data = self.bank.get_due_payments_data(account_id, ttl_hash=self.get_ttl_hash())
         if len(payments_data['items']) == 0:
             return
+        if header is not None:
+            print('\n%s:' % header)
+        account_data = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
+        bank_balance = None
+        for account in account_data['items']:
+            if account_id == account['accountId']:
+                bank_balance = account['available']
+                break
         table = Table()
         header_row = HeaderRow()
         header_row.add(Column(_('due_date')))
@@ -505,10 +518,13 @@ class Teller(cmd.Cmd):
         header_row.add(Column(_('status')))
         header_row.add(Column(_('type')))
         header_row.add(Column(_('total')))
+        header_row.add(Column(_('balance_after')))
         table.add(header_row)
         total = 0
         for payment in payments_data['items']:
             amount = payment['amount']
+            bank_balance -= amount
+            total += amount
             row = Row()
             row.add(Column(self.get_nice_date(payment['dueDate'], red_if_overdue=True)))
             row.add(Column(payment['beneficiaryName'], min_width=31))
@@ -518,9 +534,9 @@ class Teller(cmd.Cmd):
             row.add(Column(payment['text'].strip() if(payment['text'] is not None and payment['text'] != payment['beneficiaryName']) else '', min_width=27))
             row.add(Column(self.get_nice_payment_status(payment['status'], payment['statusDetails'])))
             row.add(Column(self.get_nice_payment_type(payment['productType'], payment['paymentType'])))
-            table.add(row)
-            total += amount
             row.add(Column(self.get_nice_amount(total), justification='RIGHT'))
+            row.add(Column(self.get_nice_amount(bank_balance, red_if_minus=True), justification='RIGHT'))
+            table.add(row)
         footer_row = FooterRow()
         footer_row.add(Column())
         footer_row.add(Column())
@@ -531,21 +547,24 @@ class Teller(cmd.Cmd):
         footer_row.add(Column())
         footer_row.add(Column())
         footer_row.add(Column())
+        footer_row.add(Column())
         table.add(footer_row)
         print(table)
 
     def print_standing_orders(self):
         if self.current_account:
-            self.print_standing_orders_for_account(self.current_account['accountId'])
+            self.print_standing_orders_for_account(self.current_account['accountId'], None)
         else:
             account_data = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
             for account in account_data['items']:
-                self.print_standing_orders_for_account(account['accountId'])
+                self.print_standing_orders_for_account(account['accountId'], account['name'])
 
-    def print_standing_orders_for_account(self, account_id):
+    def print_standing_orders_for_account(self, account_id, header = None):
         data = self.bank.get_standing_orders_data(account_id, ttl_hash=self.get_ttl_hash())
         if len(data['items']) == 0:
             return
+        if header is not None:
+            print('\n%s:' % header)
         table = Table()
         header_row = HeaderRow()
         header_row.add(Column(_('next_due_date')))
