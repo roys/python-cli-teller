@@ -358,14 +358,27 @@ class Teller(cmd.Cmd):
         header_row.add(Column(_('bank_balance')))
         header_row.add(Column(_('book_balance')))
         table.add(header_row)
+        total_available = 0
+        total_balance = 0
         for i, account in enumerate(accountData['items']):
+            available = account['available']
+            balance = account['balance']
             row = Row()
             row.add(Column(i + 1))
             row.add(Column(self.get_nice_account_no(account['accountNumber'])))
             row.add(Column(self.get_nice_name(account['name'])))
-            row.add(Column(self.get_nice_amount(account['available']), justification='RIGHT'))
-            row.add(Column(self.get_nice_amount(account['balance']), justification='RIGHT'))
+            row.add(Column(self.get_nice_amount(available), justification='RIGHT'))
+            row.add(Column(self.get_nice_amount(balance), justification='RIGHT'))
+            total_available += available
+            total_balance += balance
             table.add(row)
+        footer_row = FooterRow()
+        footer_row.add(Column())
+        footer_row.add(Column())
+        footer_row.add(Column(_('total')))
+        footer_row.add(Column(self.get_nice_amount(total_available), justification='RIGHT'))
+        footer_row.add(Column(self.get_nice_amount(total_balance), justification='RIGHT'))
+        table.add(footer_row)
         print(table)
         print(_('initial_help'))
         print()
@@ -607,7 +620,6 @@ class Teller(cmd.Cmd):
     def do_ls(self, line):
         if self.current_directory_type == 'top_level':
             self.print_balances()
-            # TODO
         elif self.current_directory_type == 'account':
             self.print_transactions()
         elif self.current_directory_type == 'efaktura':
