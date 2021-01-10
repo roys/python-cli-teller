@@ -54,11 +54,11 @@ class Sbanken(IBank):
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
         if response.status_code == 200:
-            json = response.json()
+            parsed = response.json()
             if self.verbose:
-                print('Got scopes %s.' % json['scope'])
-            self.access_token = str(json['access_token'])
-            self.access_token_expiration = int(time.time()) + int(json['expires_in'])
+                print('Got scopes %s.' % parsed['scope'])
+            self.access_token = str(parsed['access_token'])
+            self.access_token_expiration = int(time.time()) + int(parsed['expires_in'])
             return self.access_token
         else:
             print()
@@ -79,7 +79,7 @@ class Sbanken(IBank):
     @lru_cache(maxsize=10)
     def get_transactions_data(self, accountId, ttl_hash=None):
         if self.verbose:
-            print('Fetching standing orders for account [%s]...' % accountId)
+            print('Fetching transactions data for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = requests.get('https://api.sbanken.no/exec.bank/api/v1/transactions/%s' % accountId, headers=headers)
         if self.print_raw_data:

@@ -12,6 +12,14 @@ import os
 import sys
 import time
 
+"""
+TODO:
+Add support for transfers - https://api.sbanken.no/exec.bank/swagger/index.html?urls.primaryName=Transfers%20v1
+Add support for get_standing_orders_data + get_due_payments_data + 
+Add support for paying eFaktura - https://api.sbanken.no/exec.bank/swagger/index.html?urls.primaryName=EFakturas%20v1
+Demo
+Anonymizing
+"""
 
 VERSION = '2.0.0'
 FILENAME_CONFIG = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'config.ini')
@@ -463,8 +471,8 @@ class Teller(cmd.Cmd):
             return
         accounts = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
         if accounts and accounts['items']:
-            for account in accounts['items']:
-                if account['name'].lower() == line.lower() or self.get_nice_account_no(account['accountNumber']) == line or account['accountNumber'] == line:
+            for i, account in enumerate(accounts['items']):
+                if account['name'].lower() == line.lower() or self.get_nice_account_no(account['accountNumber']) == line or account['accountNumber'] == line or (line.isdigit() and int(line) == i + 1):
                     self.current_directory = account['name']
                     self.current_directory_type = 'account'
                     self.current_account = account
@@ -599,7 +607,8 @@ parser.add_argument("-l", "--lang", help=_('args_help_language'), action="store"
 parser.add_argument("-r", "--reset", help=_('args_help_reset'), action='store_true')
 parser.add_argument("-v", "--verbose", help=_('args_help_verbose'), action='store_true')
 parser.add_argument("--raw", help=_('args_help_raw'), action='store_true')
-parser.add_argument('-V', '--version', action='version', version='%(prog)s version ' + VERSION + '. © 2018-2020 Roy Solberg - https://roysolberg.com.')
+copyright_year = str(max(datetime.datetime.now().year, 2021))
+parser.add_argument('-V', '--version', action='version', version='%(prog)s version ' + VERSION + '. © 2018-' + copyright_year + ' Roy Solberg - https://roysolberg.com.')
 parser.add_argument('-h', '--help', action='help', default=argparse.SUPPRESS, help=_('args_help'))
 args = parser.parse_args(sys.argv[1:])
 
@@ -691,6 +700,7 @@ if __name__ == '__main__':
         teller.cmdloop()
     except KeyboardInterrupt:
         pass
-    config.set(bank.get_id(), 'accessToken', aesCipher.encrypt(bank.access_token))
-    config.set(bank.get_id(), 'accessTokenExpiration', aesCipher.encrypt(str(bank.access_token_expiration)))
-    storeConfig()
+    if not args.demo:
+        config.set(bank.get_id(), 'accessToken', aesCipher.encrypt(bank.access_token))
+        config.set(bank.get_id(), 'accessTokenExpiration', aesCipher.encrypt(str(bank.access_token_expiration)))
+        storeConfig()

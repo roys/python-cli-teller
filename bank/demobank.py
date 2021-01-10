@@ -13,3 +13,49 @@ class DemoBank(IBank):
 
     def get_accounts(self):
         pass
+
+    def get_account_data(self, ttl_hash=None):
+        return {
+            "items": [
+                {
+                    "accountId": "123",
+                    "accountNumber": "97101299999",
+                    "accountType": "Standard account",
+                    "available": 10441.4,
+                    "balance": 10550.0,
+                    "creditLimit": 0.0,
+                    "name": "Brukskonto",
+                    "ownerCustomerId": "01017012345"
+                },
+                {
+                    "accountId": "124",
+                    "accountNumber": "97101399999",
+                    "accountType": "High interest account",
+                    "available": 101739.21,
+                    "balance": 101739.21,
+                    "creditLimit": 0.0,
+                    "name": "Sparekonto",
+                    "ownerCustomerId": "01017012345"
+                },
+                {
+                    "accountId": "125",
+                    "accountNumber": "97231499999",
+                    "accountType": "BSU account",
+                    "available": 41769.49,
+                    "balance": 530245.07,
+                    "creditLimit": 0.0,
+                    "name": "BSU-konto",
+                    "ownerCustomerId": "01017012345"
+                },
+                {
+                    "accountId": "126",
+                    "accountNumber": "98001599999",
+                    "accountType": "High interest account",
+                    "available": 1003940.27,
+                    "balance": 1003940.27,
+                    "creditLimit": 0.0,
+                    "name": "Data counter widget",
+                    "ownerCustomerId": "01017012345"
+                }
+            ]
+        }
