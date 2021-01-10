@@ -59,3 +59,57 @@ class DemoBank(IBank):
                 }
             ]
         }
+
+    def get_efaktura_data(self, ttl_hash=None):
+        return {
+            "items": [
+                {
+                    "creditAccountNumber": "97121499999",
+                    "documentType": "INVOICE",
+                    "eFakturaId": "161718",
+                    "eFakturaReference": "192021",
+                    "issuerId": "222324",
+                    "issuerName": "Student loan",
+                    "kid": "40",
+                    "minimumAmount": 0.0,
+                    "notificationDate": "2020-12-21T00:00:00",
+                    "originalAmount": 1747.0,
+                    "originalDueDate": "2021-01-15T00:00:00",
+                    "status": "PROCESSED",
+                    "updatedAmount": 1800.0,
+                    "updatedDueDate": "2021-01-15T00:00:00"
+                },
+                {
+                    "creditAccountNumber": "97121399999",
+                    "documentType": "INVOICE",
+                    "eFakturaId": "101112",
+                    "eFakturaReference": "131415",
+                    "issuerId": "252627",
+                    "issuerName": "Credit card",
+                    "kid": "41",
+                    "minimumAmount": 633.91,
+                    "notificationDate": "2021-01-06T00:00:00",
+                    "originalAmount": 15847.78,
+                    "originalDueDate": "2021-01-20T00:00:00",
+                    "status": "NEW",
+                    "updatedAmount": 0.0,
+                    "updatedDueDate": None
+                },
+                {
+                    "creditAccountNumber": "97101299999",
+                    "documentType": "INVOICE_WITH_AVTALEGIRO",
+                    "eFakturaId": "123",
+                    "eFakturaReference": "456",
+                    "issuerId": "789",
+                    "issuerName": "roysolberg.com",
+                    "kid": "42",
+                    "minimumAmount": 0.0,
+                    "notificationDate": "2021-01-05T00:00:00",
+                    "originalAmount": 1337.0,
+                    "originalDueDate": "2021-01-21T00:00:00",
+                    "status": "NEW",
+                    "updatedAmount": 0.0,
+                    "updatedDueDate": None
+                },
+            ]
+        }

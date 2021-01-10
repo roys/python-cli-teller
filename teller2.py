@@ -71,9 +71,9 @@ def _(key, *args, **kwargs):
     if error:
         value += COLOR_ERROR
     if langConfig.has_option('language', key):
-        dictValue = langConfig.get('language', key).replace('\\t', '    ')
+        dictValue = langConfig.get('language', key).replace('\\t', '    ').replace('\\n', '\n')
         for arg in args:
-            dictValue = dictValue.replace('%s', str(arg).decode('utf-8'), 1)
+            dictValue = dictValue.replace('%s', str(arg), 1)
         value += dictValue
     else:
         value += key
@@ -83,8 +83,10 @@ def _(key, *args, **kwargs):
 
 
 class Column():
-    def __init__(self, text, justification='LEFT', min_width=0):
-        if not isinstance(text, str):
+    def __init__(self, text = '', justification = 'LEFT', min_width = 0):
+        if text is None:
+            text = ''
+        elif not isinstance(text, str):
             text = str(text)
         self.text = text
         self.width = max(min_width, 0 if text is None else len(text.replace(COLOR_ERROR, '').replace(COLOR_RESET, '')) + 2)
@@ -158,6 +160,23 @@ class HeaderRow(Row):
                 output += '╋'
             output += '━' * column.width
         output += '┫'
+        return output
+
+
+class FooterRow(Row):
+    def __init__(self):
+        super().__init__()
+
+    def __str__(self):
+        output = ''
+        for i, column in enumerate(self.columns):
+            if i == 0:
+                output += '┣'
+            else:
+                output += '╋'
+            output += '━' * column.width
+        output += '┫\n'
+        output += super().__str__()
         return output
 
 
@@ -251,8 +270,8 @@ class Teller(cmd.Cmd):
         return amount
 
     def get_nice_transaction_type(self, transactionType):
-        value = _('transfer_' + transactionType)
-        if value.startswith('transfer_'): # No translation available - return type as-is
+        value = _('transaction_' + transactionType)
+        if value.startswith('transaction_'): # No translation available - return type as-is
             return transactionType
         return value
 
@@ -348,6 +367,8 @@ class Teller(cmd.Cmd):
             row.add(Column(self.get_nice_amount(account['balance']), justification='RIGHT'))
             table.add(row)
         print(table)
+        print(_('initial_help'))
+        print()
 
     def print_transactions(self):
         transactions_data = self.bank.get_transactions_data(self.current_account['accountId'], ttl_hash=self.get_ttl_hash())
@@ -359,16 +380,60 @@ class Teller(cmd.Cmd):
         header_row.add(Column(_('amount')))
         header_row.add(Column(_('type')))
         table.add(header_row)
+        incomingAmount = 0
+        incomingCount = 0
+        outgoingAmount = 0
+        outgoingCount = 0
         for payment in transactions_data['items']:
+            amount = payment['amount']
             row = Row()
             row.add(Column(self.get_nice_date(payment['accountingDate'])))
             row.add(Column(self.get_nice_date(payment['interestDate'])))
             row.add(Column(payment['text']))
-            row.add(Column(self.get_nice_amount(payment['amount']), justification='RIGHT'))
+            row.add(Column(self.get_nice_amount(amount), justification='RIGHT'))
             row.add(Column(self.get_nice_transaction_type(payment['transactionType'])))
             table.add(row)
+            if amount >= 0:
+                incomingAmount += amount
+                incomingCount += 1
+            else:
+                outgoingAmount += amount
+                outgoingCount += 1
+        totalCount = str(incomingCount + outgoingCount)
+        # Summary incoming
+        footer_row = FooterRow()
+        footer_row.add(Column())
+        footer_row.add(Column())
+        if incomingCount == 1:
+            footer_row.add(Column(_('incoming_transaction', str(incomingCount).rjust(len(totalCount)))))
+        else:
+            footer_row.add(Column(_('incoming_transactions', str(incomingCount).rjust(len(totalCount)))))
+        footer_row.add(Column(self.get_nice_amount(incomingAmount), justification='RIGHT'))
+        footer_row.add(Column())
+        table.add(footer_row)
+        # Summary outgoing
+        row = Row()
+        row.add(Column())
+        row.add(Column())
+        if outgoingCount == 1:
+            row.add(Column(_('outgoing_transaction', str(outgoingCount).rjust(len(totalCount)))))
+        else:
+            row.add(Column(_('outgoing_transactions', str(outgoingCount).rjust(len(totalCount)))))
+        row.add(Column(self.get_nice_amount(outgoingAmount), justification='RIGHT'))
+        row.add(Column())
+        table.add(row)
+        # Summary total
+        row = Row()
+        row.add(Column())
+        row.add(Column())
+        if totalCount == 1:
+            row.add(Column(_('total_transaction', totalCount)))
+        else:
+            row.add(Column(_('total_transactions', totalCount)))
+        row.add(Column(self.get_nice_amount(incomingAmount + outgoingAmount), justification='RIGHT'))
+        row.add(Column())
+        table.add(row)
         print(table)
-        pass
 
     def print_cards(self):
         card_data = self.bank.get_card_data(ttl_hash=self.get_ttl_hash())
@@ -484,29 +549,23 @@ class Teller(cmd.Cmd):
             else:
                 self.current_directory = _('cards')
             self.current_directory_type = 'cards'
-        if _('cards').lower() == line.lower():
-            if self.current_account:
-                self.current_directory = self.current_account['name'] + '/' + _('cards')
-            else:
-                self.current_directory = _('cards')
-            self.current_directory_type = 'cards'
-        if _('standing_orders').lower() == line.lower():
+        elif _('standing_orders').lower() == line.lower():
             if self.current_account:
                 self.current_directory = self.current_account['name'] + '/' + _('standing_orders')
             else:
                 self.current_directory = _('standing_orders')
             self.current_directory_type = 'standing_orders'
-        if _('due_payments').lower() == line.lower():
+        elif _('due_payments').lower() == line.lower():
             if self.current_account:
                 self.current_directory = self.current_account['name'] + '/' + _('due_payments')
             else:
                 self.current_directory = _('due_payments')
             self.current_directory_type = 'due_payments'
-        if _('efaktura').lower() == line.lower():
+        elif _('efaktura').lower() == line.lower():
             self.current_directory = _('efaktura')
             self.current_directory_type = 'efaktura'
             self.current_account = None
-        if '..' == line:
+        elif '..' == line:
             if self.current_directory_type == 'account' or self.current_account is None:
                 self.current_directory = bank.get_name()
                 self.current_directory_type = 'top_level'
@@ -678,20 +737,20 @@ else:
     else:
         password = getpass.getpass(_('enter_password_2'))
         aesCipher = AESCipher(password)
-        client_id = aesCipher.decrypt(config.get(bank.get_id(), 'clientId'))
-        client_secret = aesCipher.decrypt(config.get(bank.get_id(), 'clientSecret'))
-        user_id = aesCipher.decrypt(config.get(bank.get_id(), 'userId'))
-        if(config.has_option(bank.get_id(), 'accessToken') and config.has_option(bank.get_id(), 'accessTokenExpiration')):
-            try:
+        try:
+            client_id = aesCipher.decrypt(config.get(bank.get_id(), 'clientId'))
+            client_secret = aesCipher.decrypt(config.get(bank.get_id(), 'clientSecret'))
+            user_id = aesCipher.decrypt(config.get(bank.get_id(), 'userId'))
+            if(config.has_option(bank.get_id(), 'accessToken') and config.has_option(bank.get_id(), 'accessTokenExpiration')):
                 access_token = aesCipher.decrypt(config.get(bank.get_id(), 'accessToken'))
                 access_token_expiration = int(aesCipher.decrypt(config.get(bank.get_id(), 'accessTokenExpiration')))
                 if int(time.time()) >= access_token_expiration:
                     access_token = None
                     access_token_expiration = None
-            except (ValueError, UnicodeDecodeError):
-                print(_('error_failed_to_decrypt_token', error=True))
-                printShortHelp()
-                exit()
+        except (ValueError, UnicodeDecodeError):
+            print(_('error_failed_to_decrypt_token', error=True))
+            printShortHelp()
+            exit()
     bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, _, args.verbose, args.raw)
 
 if __name__ == '__main__':
