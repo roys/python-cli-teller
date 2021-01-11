@@ -1,0 +1,4 @@
+COLOR_OK = '\033[92m'
+COLOR_ERROR = '\033[91m'
+COLOR_RESET = '\033[0m'
+COLOR_BLUE = '\x1b[34m'

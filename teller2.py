@@ -1,7 +1,9 @@
-from aescipher import AESCipher
-import argparse
 from bank.sbanken import Sbanken
 from bank.demobank import DemoBank
+from table import *
+from colors import *
+from aescipher import AESCipher
+import argparse
 import cmd
 import configparser
 import datetime
@@ -13,6 +15,7 @@ import platform
 import requests
 import sys
 import time
+import traceback
 
 """
 TODO:
@@ -21,14 +24,13 @@ Add support for get_standing_orders_data + get_due_payments_data +
 Add support for paying eFaktura - https://api.sbanken.no/exec.bank/swagger/index.html?urls.primaryName=EFakturas%20v1
 Demo
 Anonymizing
+Summere per linje på forfall? sånn som jeg savner i banken?
+Skrive tilgjengelig saldo på forfall?
+blande inn kommende overføringer i forfall?
 """
 
 __version__ = '2.0.0'
 FILENAME_CONFIG = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'config.ini')
-COLOR_OK = '\033[92m'
-COLOR_ERROR = '\033[91m'
-COLOR_RESET = '\033[0m'
-COLOR_BLUE = '\x1b[34m'
 
 config = configparser.ConfigParser()
 if not config.has_section('general'):
@@ -84,133 +86,6 @@ def _(key, *args, **kwargs):
     return value
 
 
-class Column():
-    def __init__(self, text = '', justification = 'LEFT', min_width = 0):
-        if text is None:
-            text = ''
-        elif not isinstance(text, str):
-            text = str(text)
-        self.text = text
-        self.width = max(min_width, 0 if text is None else len(text.replace(COLOR_ERROR, '').replace(COLOR_RESET, '')) + 2)
-        self.justification = justification
-
-    def calculate_width(self, width):
-        return max(width, self.width)
-
-    def set_width(self, width):
-        self.width = width
-
-    def __str__(self):
-        if self.text is None:
-            return ' ' * self.width
-        extra = 9 if COLOR_RESET in self.text else 0
-        if self.justification == 'RIGHT':
-            return ' ' + self.text.rjust(self.width - 2 + extra, ' ') + ' '
-        return ' ' + self.text.ljust(self.width - 2 + extra, ' ') + ' '
-
-
-class Row():
-    def __init__(self):
-        self.columns = []
-
-    def add(self, column):
-        self.columns.append(column)
-
-    def calculate_widths(self, widths):
-        if widths is None:
-            widths = [0] * len(self.columns)
-        for i in range(len(widths)):
-            try:
-                widths[i] = self.columns[i].calculate_width(widths[i])
-            except IndexError:
-                pass
-        return widths
-
-    def set_widths(self, widths):
-        for i in range(len(widths)):
-            try:
-                self.columns[i].set_width(widths[i])
-            except IndexError:
-                pass
-
-    def __str__(self):
-        output = '┃'
-        for column in self.columns:
-            output += str(column)
-            output += '┃'
-        return output
-
-
-class HeaderRow(Row):
-    def __init__(self):
-        super().__init__()
-
-    def __str__(self):
-        output = ''
-        for i, column in enumerate(self.columns):
-            if i == 0:
-                output += '┏'
-            else:
-                output += '┳'
-            output += '━' * column.width
-        output += '┓\n'
-        output += super().__str__()
-        for i, column in enumerate(self.columns):
-            if i == 0:
-                output += '\n┣'
-            else:
-                output += '╋'
-            output += '━' * column.width
-        output += '┫'
-        return output
-
-
-class FooterRow(Row):
-    def __init__(self):
-        super().__init__()
-
-    def __str__(self):
-        output = ''
-        for i, column in enumerate(self.columns):
-            if i == 0:
-                output += '┣'
-            else:
-                output += '╋'
-            output += '━' * column.width
-        output += '┫\n'
-        output += super().__str__()
-        return output
-
-
-class Table():
-    def __init__(self):
-        self.rows = []
-
-    def add(self, row):
-        self.rows.append(row)
-
-    def __str__(self):
-        widths = None
-        for row in self.rows:
-            widths = row.calculate_widths(widths)
-        output = '\n'
-        last_row = None
-        for row in self.rows:
-            row.set_widths(widths)
-            output += str(row) + '\n'
-            last_row = row
-        if last_row is not None:
-            for i, column in enumerate(last_row.columns):
-                if i == 0:
-                    output += '┗'
-                else:
-                    output += '┻'
-                output += '━' * column.width
-            output += '┛'
-        output += '\n'
-        return output
-
-
 class Teller(cmd.Cmd):
     doc_header = _('doc_header')
     undoc_header = _('undoc_header')
@@ -239,9 +114,15 @@ class Teller(cmd.Cmd):
     def default(self, line):
         cmd, arg, line = self.parseline(line)
         if cmd in self.aliases:
-            self.aliases[cmd](arg)
+            return self.aliases[cmd](arg)
         else:
-            print("*** Unknown syntax: %s" % line)
+            if(line == 'EOF'):
+                return self.do_exit(line)
+            else:
+                print("*** Unknown syntax: %s" % line)
+
+    def emptyline(self):
+        pass
 
     def get_nice_account_no(self, accountNo):
         if args.anon:
@@ -621,6 +502,19 @@ class Teller(cmd.Cmd):
     def set_prompt(self):
         self.prompt = self.current_directory + '> '
 
+    def complete_accounts(self, complete, text):
+        accounts = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
+        if accounts and accounts['items']:
+            for account in accounts['items']:
+                if len(text) == 0:
+                    complete.append(account['name'])
+                elif self.get_nice_account_no(account['accountNumber']).startswith(text):
+                    complete.append(self.get_nice_account_no(account['accountNumber']))
+                elif account['accountNumber'].startswith(text):
+                    complete.append(self.get_nice_account_no(account['accountNumber']))
+                elif account['name'].lower().startswith(text.lower()):
+                    complete.append(account['name'])
+
     def do_cd(self, line):
         if len(line) == 0:
             return
@@ -663,6 +557,9 @@ class Teller(cmd.Cmd):
             else:
                 self.current_directory = self.current_account['name']
                 self.current_directory_type = 'account'
+        else:
+            print(_('unknown_destination'))
+            print(_('initial_help'))
         self.set_prompt()
 
     def help_cd(self):
@@ -673,17 +570,7 @@ class Teller(cmd.Cmd):
         complete = []
         if self.current_directory_type != 'top_level' and (len(text) == 0 or '..'.startswith(text)):
             complete.append('..')
-        accounts = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
-        if accounts and accounts['items']:
-            for account in accounts['items']:
-                if len(text) == 0:
-                    complete.append(account['name'])
-                elif self.get_nice_account_no(account['accountNumber']).startswith(text):
-                    complete.append(self.get_nice_account_no(account['accountNumber']))
-                elif account['accountNumber'].startswith(text):
-                    complete.append(self.get_nice_account_no(account['accountNumber']))
-                elif account['name'].lower().startswith(text.lower()):
-                    complete.append(account['name'])
+        self.complete_accounts(complete, text)
         if len(text) == 0 or _('cards').lower().startswith(text.lower()):
             complete.append(_('cards'))
         if len(text) == 0 or _('efaktura').lower().startswith(text.lower()):
@@ -714,6 +601,20 @@ class Teller(cmd.Cmd):
     def complete_ls(self):
         pass
 
+    def do_mv(self, line):
+        pass
+
+    def complete_mv(self, text, line, begidx, endidx):
+        complete = []
+        print('\ntext=[%s], line=[%s], begidx=[%s], endix=f[%s]' % (text, line, begidx, endidx))
+        if len(line.split()) <= 3: # mv from_account to_account amount text
+            self.complete_accounts(complete, text)
+
+        return complete
+
+    def help_mv(self, line):
+        print(_('help_mv'))
+
     complete_dir = complete_ls
     complete_list = complete_ls
 
@@ -737,9 +638,9 @@ class Teller(cmd.Cmd):
     def help_whoami(self):
         print(_('help_whoami'))
 
-    def do_exit(self, line):
+    def do_exit(self, line='ok', c='c', d='d'):
         print(_('good_bye'))
-        return -1
+        return True
 
     def help_exit(self):
         print(_('help_exit'))
@@ -847,11 +748,16 @@ else:
     bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, get_user_agent(), _, args.verbose, args.raw)
 
 if __name__ == '__main__':
-    try:
-        teller = Teller(bank, args.verbose, args.anon)
-        teller.cmdloop()
-    except KeyboardInterrupt:
-        pass
+    teller = Teller(bank, args.verbose, args.anon)
+    running = True
+    while running:
+        try:
+            teller.cmdloop()
+            running = False
+        except KeyboardInterrupt:
+            print('\n^C')
+            print(_('exit_help'))
+            pass
     if not args.demo:
         config.set(bank.get_id(), 'accessToken', aesCipher.encrypt(bank.access_token))
         config.set(bank.get_id(), 'accessTokenExpiration', aesCipher.encrypt(str(bank.access_token_expiration)))
