@@ -24,9 +24,7 @@ Add support for get_standing_orders_data + get_due_payments_data +
 Add support for paying eFaktura - https://api.sbanken.no/exec.bank/swagger/index.html?urls.primaryName=EFakturas%20v1
 Demo
 Anonymizing
-Summere per linje på forfall? sånn som jeg savner i banken?
-Skrive tilgjengelig saldo på forfall?
-blande inn kommende overføringer i forfall?
+Show incoming transfers in payments due?
 """
 
 __version__ = '2.0.0'
