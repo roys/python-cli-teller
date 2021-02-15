@@ -120,6 +120,7 @@ class Teller(cmd.Cmd):
                 print("*** Unknown syntax: %s" % line)
 
     def emptyline(self):
+        # Overriding to avoid repeat last command
         pass
 
     def get_nice_account_no(self, accountNo):
@@ -157,7 +158,7 @@ class Teller(cmd.Cmd):
 
     def get_nice_transaction_type(self, transactionType):
         value = _('transaction_' + transactionType)
-        if value.startswith('transaction_'): # No translation available - return type as-is
+        if value.startswith('transaction_'):  # No translation available - return type as-is
             return transactionType
         return value
 
@@ -194,13 +195,13 @@ class Teller(cmd.Cmd):
 
     def get_nice_efaktura_type(self, efaktura_type):
         value = _('efaktura_type_' + efaktura_type)
-        if value.startswith('efaktura_type_'): # No translation available - return type as-is
+        if value.startswith('efaktura_type_'):  # No translation available - return type as-is
             return efaktura_type
         return value
 
     def get_nice_efaktura_status(self, status):
         value = _('efaktura_status_' + status)
-        if value.startswith('efaktura_status_'): # No translation available - return type as-is
+        if value.startswith('efaktura_status_'):  # No translation available - return type as-is
             return status
         if status == 'PROCESSED':
             return COLOR_OK + value + COLOR_RESET
@@ -374,7 +375,7 @@ class Teller(cmd.Cmd):
             for account in account_data['items']:
                 self.print_due_payments_for_account(account['accountId'], account['name'])
 
-    def print_due_payments_for_account(self, account_id, header = None):
+    def print_due_payments_for_account(self, account_id, header=None):
         payments_data = self.bank.get_due_payments_data(account_id, ttl_hash=self.get_ttl_hash())
         if len(payments_data['items']) == 0:
             return
@@ -438,7 +439,7 @@ class Teller(cmd.Cmd):
             for account in account_data['items']:
                 self.print_standing_orders_for_account(account['accountId'], account['name'])
 
-    def print_standing_orders_for_account(self, account_id, header = None):
+    def print_standing_orders_for_account(self, account_id, header=None):
         data = self.bank.get_standing_orders_data(account_id, ttl_hash=self.get_ttl_hash())
         if len(data['items']) == 0:
             return
@@ -600,12 +601,18 @@ class Teller(cmd.Cmd):
         pass
 
     def do_mv(self, line):
-        pass
+        args = line.split()
+        print(args)
+        if self.current_account is None:  # No specific account
+            if len(args) < 4:
+                print(_('mv_invalid_arguments_no_account_selected'))
+            else:
+                pass
 
     def complete_mv(self, text, line, begidx, endidx):
         complete = []
-        print('\ntext=[%s], line=[%s], begidx=[%s], endix=f[%s]' % (text, line, begidx, endidx))
-        if len(line.split()) <= 3: # mv from_account to_account amount text
+        #print('\ntext=[%s], line=[%s], begidx=[%s], endix=f[%s]' % (text, line, begidx, endidx))
+        if len(line.split()) <= 3:  # mv from_account to_account amount text
             self.complete_accounts(complete, text)
 
         return complete
@@ -680,8 +687,10 @@ def printPleaseWait():
     print(_('please_wait'))
     print()
 
+
 def get_user_agent():
     return 'teller/' + __version__ + ' (' + platform.system() + ' ' + platform.release() + ') Python/' + platform.python_version() + ' python-requests/' + requests.__version__
+
 
 bank = None
 aesCipher = None
@@ -746,16 +755,21 @@ else:
     bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, get_user_agent(), _, args.verbose, args.raw)
 
 if __name__ == '__main__':
-    teller = Teller(bank, args.verbose, args.anon)
+    try:
+        teller = Teller(bank, args.verbose, args.anon)
+    except requests.exceptions.RequestException as e:
+        print(_('error_network', e))
+        exit(0)
     running = True
     while running:
         try:
             teller.cmdloop()
             running = False
-        except KeyboardInterrupt:
+        except KeyboardInterrupt:  # User pressed ctrl+c
             print('\n^C')
             print(_('exit_help'))
-            pass
+        except requests.exceptions.RequestException:
+            print(_('error_network', e))
     if not args.demo:
         config.set(bank.get_id(), 'accessToken', aesCipher.encrypt(bank.access_token))
         config.set(bank.get_id(), 'accessTokenExpiration', aesCipher.encrypt(str(bank.access_token_expiration)))
