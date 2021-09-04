@@ -54,6 +54,7 @@ class Sbanken(IBank):
         headers = {'Authorization': 'Basic ' + base64.b64encode((urllib.parse.quote_plus(self.client_id) + ':' + urllib.parse.quote_plus(self.client_secret)).encode('utf-8')).decode('utf-8'), 'Accept': 'application/json'}
         response = self.session.post('https://auth.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
         if self.print_raw_data:
+            print(response.status_code)
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
         if response.status_code == 200:

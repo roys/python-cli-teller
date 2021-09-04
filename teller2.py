@@ -700,6 +700,8 @@ if args.demo:
 else:
     bank = Sbanken()
     firstRun = not config.has_section(bank.get_id()) or args.reset
+    access_token = None
+    access_token_expiration = None
     if firstRun:
         print()
         print(_('first_run_message'))
@@ -768,7 +770,7 @@ if __name__ == '__main__':
         except KeyboardInterrupt:  # User pressed ctrl+c
             print('\n^C')
             print(_('exit_help'))
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
             print(_('error_network', e))
     if not args.demo:
         config.set(bank.get_id(), 'accessToken', aesCipher.encrypt(bank.access_token))
