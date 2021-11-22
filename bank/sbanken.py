@@ -39,7 +39,7 @@ class Sbanken(IBank):
             print('Fetching customer info...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json'}
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/customers', headers=headers)
-        if True:
+        if self.print_raw_data:
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
         return response.json()
