@@ -46,8 +46,8 @@ def getLanguageConfig():
     except (configparser.NoOptionError, configparser.NoSectionError, configparser.MissingSectionHeaderError):
         pass
     try:
-        langConfig.read(os.path.join(os.path.dirname(
-            os.path.realpath(__file__)), 'strings_v2_' + defaultLanguage + '.ini'))
+        if defaultLanguage is not None:
+            langConfig.read(os.path.join(os.path.dirname(os.path.realpath(__file__)), 'strings_v2_' + defaultLanguage + '.ini'))
     except (configparser.NoOptionError, configparser.NoSectionError, configparser.MissingSectionHeaderError):
         pass
     try:
@@ -624,7 +624,7 @@ class Teller(cmd.Cmd):
     complete_list = complete_ls
 
     def do_whoami(self, line):
-        customer = self.bank.get_customer_info(ttl_hash=self.get_ttl_hash())['item']
+        customer = self.bank.get_customer_info(ttl_hash=self.get_ttl_hash())
         print()
         print('%s %s' % (customer['firstName'], customer['lastName']))
         if customer['postalAddress']['addressLine1']:
@@ -637,7 +637,9 @@ class Teller(cmd.Cmd):
             print('%s' % customer['postalAddress']['addressLine4'])
         print()
         print('%s' % customer['emailAddress'])
-        print('%s' % customer['phoneNumbers'][0]['number'])
+        if customer['phoneNumbers']:
+            for phoneNumber in customer['phoneNumbers']:
+                print('%s' % phoneNumber['number'])
         print()
 
     def help_whoami(self):
