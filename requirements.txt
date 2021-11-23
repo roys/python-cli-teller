@@ -2,3 +2,4 @@
 requests==2.25.1
 pycryptodome==3.9.9
 python_dateutil==2.8.1
+gnureadline==8.0.0
