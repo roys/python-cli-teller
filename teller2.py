@@ -190,6 +190,8 @@ class Teller(cmd.Cmd):
     def get_nice_card_status(self, status):
         if status == 'Active':
             return COLOR_OK + _('active') + COLOR_RESET
+        if status == 'Inactive':
+            return COLOR_BLUE + _('inactive') + COLOR_RESET
         if status == 'Deleted':
             return COLOR_ERROR + _('deleted') + COLOR_RESET
         return status
@@ -215,9 +217,16 @@ class Teller(cmd.Cmd):
             return COLOR_BLUE + value + COLOR_RESET
         return value
 
+    def get_message_status(self, status):
+        if status == 0:
+            return COLOR_OK + _('unread') + COLOR_RESET
+        if status == 1:
+            return _('read')
+        return status
+
     def get_nice_payment_status(self, status1, status2):
         if status1 == 'Active' and status2 == 'Active':
-            return _('active')
+            return COLOR_OK + _('active') + COLOR_RESET
         if status1 == 'Active' and status2 == 'NoFunds':
             return COLOR_ERROR + _('no_funds') + COLOR_RESET
         if status1 == status2:
@@ -504,6 +513,26 @@ class Teller(cmd.Cmd):
             table.add(row)
         print(table)
 
+    def print_mailbox(self, is_inbox=True):
+        if(is_inbox):
+            messages = self.bank.get_inbox(ttl_hash=self.get_ttl_hash())
+        table = Table()
+        header_row = HeaderRow()
+        header_row.add(Column('#'))
+        header_row.add(Column(_('date')))
+        header_row.add(Column(_('subject')))
+        header_row.add(Column(_('status')))
+        table.add(header_row)
+        for i, message in enumerate(messages['items']):
+            row = Row()
+            row.add(Column(i + 1))
+            row.add(Column(self.get_nice_date(message['receivedDate'])))
+            row.add(Column(message['subject'].strip()))
+            row.add(Column(self.get_message_status(message['status'])))
+            table.add(row)
+        print(table)
+
+
     def set_prompt(self):
         self.prompt = self.current_directory + '> '
 
@@ -554,6 +583,10 @@ class Teller(cmd.Cmd):
             self.current_directory = _('efaktura')
             self.current_directory_type = 'efaktura'
             self.current_account = None
+        elif _('mailbox').lower() == line.lower():
+            self.current_directory = _('mailbox')
+            self.current_directory_type = 'mailbox'
+            self.current_account = None
         elif '..' == line:
             if self.current_directory_type == 'account' or self.current_account is None:
                 self.current_directory = bank.get_name()
@@ -584,6 +617,8 @@ class Teller(cmd.Cmd):
             complete.append(_('standing_orders'))
         if len(text) == 0 or _('due_payments').lower().startswith(text.lower()):
             complete.append(_('due_payments'))
+        if len(text) == 0 or _('mailbox').lower().startswith(text.lower()):
+            complete.append(_('mailbox'))
         return complete
 
     def do_ls(self, line):
@@ -599,6 +634,8 @@ class Teller(cmd.Cmd):
             self.print_due_payments()
         elif self.current_directory_type == 'standing_orders':
             self.print_standing_orders()
+        elif self.current_directory_type == 'mailbox':
+            self.print_mailbox(is_inbox=True)
 
     def help_ls(self):
         print(_('help_ls'))

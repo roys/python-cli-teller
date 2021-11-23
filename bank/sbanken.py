@@ -26,6 +26,8 @@ class Sbanken(IBank):
         if user_agent is not None:
             self.session.headers.update({'User-Agent': user_agent})
         _ = dictionary
+        if self.verbose:
+            print('Using User-Agent [%s]' % user_agent)
 
     def get_id(self):
         return 'sbanken'
@@ -74,7 +76,7 @@ class Sbanken(IBank):
         if self.verbose:
             print('Fetching account data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
-        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v1/accounts', headers=headers)
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/accounts', headers=headers)
         if self.print_raw_data:
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
@@ -85,7 +87,7 @@ class Sbanken(IBank):
         if self.verbose:
             print('Fetching transactions data for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
-        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v1/transactions/%s' % accountId, headers=headers)
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/transactions/%s' % accountId, headers=headers)
         if self.print_raw_data:
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
@@ -96,7 +98,7 @@ class Sbanken(IBank):
         if self.verbose:
             print('Fetching standing orders for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
-        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v1/standingorders/%s' % accountId, headers=headers)
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/standingorders/%s' % accountId, headers=headers)
         if self.print_raw_data:
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
@@ -107,7 +109,7 @@ class Sbanken(IBank):
         if self.verbose:
             print('Fetching due payments for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
-        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v1/payments/%s' % accountId, headers=headers)
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/payments/%s' % accountId, headers=headers)
         if self.print_raw_data:
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
@@ -125,7 +127,7 @@ class Sbanken(IBank):
         if self.verbose:
             print('Fetching card data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
-        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v1/cards', headers=headers)
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/cards', headers=headers)
         if self.print_raw_data:
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
@@ -139,7 +141,22 @@ class Sbanken(IBank):
         if self.verbose:
             print('Fetching eFaktura data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
-        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v1/efakturas', headers=headers)
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/efaktura', headers=headers)
+        if self.print_raw_data:
+            print(response)
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise ApiException(response.status_code, response.text, response.headers, response.reason)
+
+
+    @lru_cache(maxsize=1)
+    def get_inbox(self, ttl_hash=None):
+        if self.verbose:
+            print('Fetching inbox messages...')
+        headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/mailbox/inbox', headers=headers)
         if self.print_raw_data:
             print(response)
             print(json.dumps(response.json(), indent=4, sort_keys=True))
