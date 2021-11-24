@@ -1,5 +1,6 @@
 from bank.sbanken import Sbanken
 from bank.demobank import DemoBank
+from bank.exception import ApiException
 from table import *
 from colors import *
 from aescipher import AESCipher
@@ -16,6 +17,8 @@ import requests
 import sys
 import time
 import traceback
+import re
+from html.parser import HTMLParser
 import readline
 import rlcompleter
 if 'libedit' in readline.__doc__:
@@ -31,6 +34,7 @@ Add support for paying eFaktura - https://api.sbanken.no/exec.bank/swagger/index
 Demo
 Anonymizing
 Show incoming transfers in payments due?
+Nice formatting of ApiException (whenever possible)
 """
 
 __version__ = '2.0.0'
@@ -90,6 +94,12 @@ def _(key, *args, **kwargs):
     return value
 
 
+class HTMLFilter(HTMLParser):
+    text = ""
+    def handle_data(self, data):
+        self.text += data
+
+
 class Teller(cmd.Cmd):
     doc_header = _('doc_header')
     undoc_header = _('undoc_header')
@@ -109,6 +119,8 @@ class Teller(cmd.Cmd):
         self.aliases = {'dir': self.do_ls,
                         'list': self.do_ls,
                         'll': self.do_ls,
+                        'type': self.do_cat,
+                        'print': self.do_cat,
                         'q': self.do_exit,
                         'quit': self.do_exit,
                         'w': self.do_whoami,
@@ -516,6 +528,8 @@ class Teller(cmd.Cmd):
     def print_mailbox(self, is_inbox=True):
         if(is_inbox):
             messages = self.bank.get_inbox(ttl_hash=self.get_ttl_hash())
+        else:
+            messages = self.bank.get_archive(ttl_hash=self.get_ttl_hash())
         table = Table()
         header_row = HeaderRow()
         header_row.add(Column('#'))
@@ -531,6 +545,41 @@ class Teller(cmd.Cmd):
             row.add(Column(self.get_message_status(message['status'])))
             table.add(row)
         print(table)
+
+
+    def print_message(self, raw_id, is_inbox=True):
+        if len(raw_id) == 0 or not raw_id.isdigit():
+            print(_('invalid_message_id'))
+            return
+        id = int(raw_id)
+        try:
+            if(is_inbox):
+                messages = self.bank.get_inbox(ttl_hash=self.get_ttl_hash())
+                message = self.bank.get_inbox_message(messages['items'][id - 1]['id'], ttl_hash=self.get_ttl_hash())
+            else:
+                messages = self.bank.get_archive(ttl_hash=self.get_ttl_hash())
+                message = self.bank.get_archive_message(messages['items'][id - 1]['id'], ttl_hash=self.get_ttl_hash())
+        except IndexError:
+            print(_('unable_to_find_message', id))
+            return
+        table = Table()
+        header_row = HeaderRow()
+        header_row.add(Column('#'))
+        header_row.add(Column(_('date')))
+        header_row.add(Column(_('subject')))
+        header_row.add(Column(_('status')))
+        table.add(header_row)
+        row = Row()
+        row.add(Column(id))
+        row.add(Column(self.get_nice_date(message['receivedDate'])))
+        row.add(Column(message['subject'].strip()))
+        row.add(Column(self.get_message_status(message['status'])))
+        table.add(row)
+        print(table)
+        f = HTMLFilter()
+        f.feed(message['body'])
+        print(f.text)
+        print()
 
 
     def set_prompt(self):
@@ -587,8 +636,16 @@ class Teller(cmd.Cmd):
             self.current_directory = _('mailbox')
             self.current_directory_type = 'mailbox'
             self.current_account = None
+        elif _('archive').lower() == line.lower() and self.current_directory_type == 'mailbox':
+            self.current_directory = _('mailbox/archive')
+            self.current_directory_type = 'mailbox/archive'
+            self.current_account = None
         elif '..' == line:
-            if self.current_directory_type == 'account' or self.current_account is None:
+            if self.current_directory_type == 'mailbox/archive':
+                self.current_directory = _('mailbox')
+                self.current_directory_type = 'mailbox'
+                self.current_account = None
+            elif self.current_directory_type == 'account' or self.current_account is None:
                 self.current_directory = bank.get_name()
                 self.current_directory_type = 'top_level'
                 self.current_account = None
@@ -619,6 +676,8 @@ class Teller(cmd.Cmd):
             complete.append(_('due_payments'))
         if len(text) == 0 or _('mailbox').lower().startswith(text.lower()):
             complete.append(_('mailbox'))
+        if (len(text) == 0 or _('archive').lower().startswith(text.lower())) and self.current_directory_type == 'mailbox':
+            complete.append(_('archive'))
         return complete
 
     def do_ls(self, line):
@@ -636,6 +695,8 @@ class Teller(cmd.Cmd):
             self.print_standing_orders()
         elif self.current_directory_type == 'mailbox':
             self.print_mailbox(is_inbox=True)
+        elif self.current_directory_type == 'mailbox/archive':
+            self.print_mailbox(is_inbox=False)
 
     def help_ls(self):
         print(_('help_ls'))
@@ -687,6 +748,16 @@ class Teller(cmd.Cmd):
 
     def help_whoami(self):
         print(_('help_whoami'))
+
+    def do_cat(self, line):
+        if self.current_directory_type != 'mailbox' and self.current_directory_type != 'mailbox/archive':
+            print(_('unknown_destination'))
+            print(_('initial_help'))
+            return
+        self.print_message(line, is_inbox = self.current_directory_type == 'mailbox')
+
+    def help_cat(self):
+        print(_('help_cat'))
 
     def do_exit(self, line='ok', c='c', d='d'):
         print(_('good_bye'))
@@ -816,7 +887,9 @@ if __name__ == '__main__':
             print('\n^C')
             print(_('exit_help'))
         except requests.exceptions.RequestException as e:
-            print(_('error_network', e))
+            print(_('error_network', e, error=True))
+        except ApiException as e:
+            print(_('error_api', e, error=True))
     if not args.demo:
         config.set(bank.get_id(), 'accessToken', aesCipher.encrypt(bank.access_token))
         config.set(bank.get_id(), 'accessTokenExpiration', aesCipher.encrypt(str(bank.access_token_expiration)))

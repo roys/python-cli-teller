@@ -54,7 +54,7 @@ class DemoBank(IBank):
                     "available": 1003940.27,
                     "balance": 1003940.27,
                     "creditLimit": 0.0,
-                    "name": "Data counter widget",
+                    "name": "teller.py",
                     "ownerCustomerId": "01017012345"
                 }
             ]
@@ -111,5 +111,48 @@ class DemoBank(IBank):
                     "updatedAmount": 0.0,
                     "updatedDueDate": None
                 },
+            ]
+        }
+
+    def get_inbox(self, ttl_hash=None):
+        return {
+            "availableItems": 3,
+            "items": [
+                {
+                    "attachmentId": None,
+                    "category": 0,
+                    "flag": 0,
+                    "id": 541797,
+                    "linkName": None,
+                    "linkUrl": None,
+                    "receivedDate": "2021-11-19T13:02:30.553",
+                    "source": "Banken",
+                    "status": 0,
+                    "subject": "Varsel om endring i avtalevilk\u00e5r - ny prismodell for fond p\u00e5 IPS"
+                },
+                {
+                    "attachmentId": 8297,
+                    "category": 1,
+                    "flag": 1,
+                    "id": 806022,
+                    "linkName": None,
+                    "linkUrl": None,
+                    "receivedDate": "2021-08-07T01:01:45.013",
+                    "source": "Banken",
+                    "status": 1,
+                    "subject": "Kredittvurdering"
+                },
+                {
+                    "attachmentId": None,
+                    "category": 0,
+                    "flag": 1,
+                    "id": 801776,
+                    "linkName": None,
+                    "linkUrl": None,
+                    "receivedDate": "2021-08-05T23:25:21.503",
+                    "source": "Banken",
+                    "status": 1,
+                    "subject": "Kredittvurdering"
+                }
             ]
         }

@@ -35,15 +35,25 @@ class Sbanken(IBank):
     def get_name(self):
         return 'Sbanken'
 
+
+    def print_raw_response_if_applicable(self, response):
+        if not self.print_raw_data:
+            return
+        print(response)
+        try:
+            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        except json.JSONDecodeError:
+            print(response.text)
+            pass
+
+
     @lru_cache(maxsize=1)
     def get_customer_info(self, ttl_hash=None):
         if self.verbose:
             print('Fetching customer info...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json'}
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/customers', headers=headers)
-        if self.print_raw_data:
-            print(response)
-            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        self.print_raw_response_if_applicable(response)
         return response.json()
 
     def get_access_token(self):
@@ -55,10 +65,7 @@ class Sbanken(IBank):
             print('Getting a fresh access token.')
         headers = {'Authorization': 'Basic ' + base64.b64encode((urllib.parse.quote_plus(self.client_id) + ':' + urllib.parse.quote_plus(self.client_secret)).encode('utf-8')).decode('utf-8'), 'Accept': 'application/json'}
         response = self.session.post('https://auth.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
-        if self.print_raw_data:
-            print(response.status_code)
-            print(response)
-            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        self.print_raw_response_if_applicable(response)
         if response.status_code == 200:
             parsed = response.json()
             if self.verbose:
@@ -77,9 +84,7 @@ class Sbanken(IBank):
             print('Fetching account data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/accounts', headers=headers)
-        if self.print_raw_data:
-            print(response)
-            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        self.print_raw_response_if_applicable(response)
         return response.json()
 
     @lru_cache(maxsize=10)
@@ -88,9 +93,7 @@ class Sbanken(IBank):
             print('Fetching transactions data for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/transactions/%s' % accountId, headers=headers)
-        if self.print_raw_data:
-            print(response)
-            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        self.print_raw_response_if_applicable(response)
         return response.json()
 
     @lru_cache(maxsize=10)
@@ -99,9 +102,7 @@ class Sbanken(IBank):
             print('Fetching standing orders for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/standingorders/%s' % accountId, headers=headers)
-        if self.print_raw_data:
-            print(response)
-            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        self.print_raw_response_if_applicable(response)
         return response.json()
 
     @lru_cache(maxsize=10)
@@ -110,9 +111,7 @@ class Sbanken(IBank):
             print('Fetching due payments for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/payments/%s' % accountId, headers=headers)
-        if self.print_raw_data:
-            print(response)
-            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        self.print_raw_response_if_applicable(response)
         if response.status_code == 200:
             # TODO: Eh, why is the order seemingly random and not by date?
             #return response.json()
@@ -128,9 +127,7 @@ class Sbanken(IBank):
             print('Fetching card data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/cards', headers=headers)
-        if self.print_raw_data:
-            print(response)
-            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        self.print_raw_response_if_applicable(response)
         if response.status_code == 200:
             return response.json()
         else:
@@ -142,9 +139,7 @@ class Sbanken(IBank):
             print('Fetching eFaktura data...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/efaktura', headers=headers)
-        if self.print_raw_data:
-            print(response)
-            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        self.print_raw_response_if_applicable(response)
         if response.status_code == 200:
             return response.json()
         else:
@@ -157,10 +152,66 @@ class Sbanken(IBank):
             print('Fetching inbox messages...')
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/mailbox/inbox', headers=headers)
-        if self.print_raw_data:
-            print(response)
-            print(json.dumps(response.json(), indent=4, sort_keys=True))
+        self.print_raw_response_if_applicable(response)
         if response.status_code == 200:
             return response.json()
         else:
             raise ApiException(response.status_code, response.text, response.headers, response.reason)
+
+
+    @lru_cache(maxsize=1)
+    def get_inbox_message(self, id, ttl_hash=None):
+        if self.verbose:
+            print('Fetching inbox message %s...' % id)
+        headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/mailbox/inbox/%s' % id, headers=headers)
+        self.print_raw_response_if_applicable(response)
+        if response.status_code == 200:
+            message = response.json()
+            if(message['status'] == 0): # Message was unread - until now
+                self.mark_inbox_message_as_read(id)
+            return message
+        else:
+            raise ApiException(response.status_code, response.text, response.headers, response.reason)
+
+    def mark_inbox_message_as_read(self, id):
+        headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+        response = self.session.put('https://publicapi.sbanken.no/apibeta/api/v2/mailbox/inbox/%s/readstatus' % id, headers=headers, data='{"status":1}')
+        if self.print_raw_data:
+            print(response)
+
+
+    @lru_cache(maxsize=1)
+    def get_archive(self, ttl_hash=None):
+        if self.verbose:
+            print('Fetching archive messages...')
+        headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/mailbox/archive', headers=headers)
+        self.print_raw_response_if_applicable(response)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise ApiException(response.status_code, response.text, response.headers, response.reason)
+
+
+    @lru_cache(maxsize=1)
+    def get_archive_message(self, id, ttl_hash=None):
+        if self.verbose:
+            print('Fetching inbox message %s...' % id)
+        headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/mailbox/archive/%s' % id, headers=headers)
+        self.print_raw_response_if_applicable(response)
+        if response.status_code == 200:
+            message = response.json()
+            if(message['status'] == 0): # Message was unread - until now
+                self.mark_archive_message_as_read(id)
+            return message
+        else:
+            raise ApiException(response.status_code, response.text, response.headers, response.reason)
+
+
+    def mark_archive_message_as_read(self, id):
+        headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+        response = self.session.put('https://publicapi.sbanken.no/apibeta/api/v2/mailbox/archive/%s/readstatus' % id, headers=headers, data='{"status":1}')
+        if self.print_raw_data:
+            self.print_raw_response_if_applicable(response)
