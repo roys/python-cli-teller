@@ -26,6 +26,7 @@ class Sbanken(IBank):
         if user_agent is not None:
             self.session.headers.update({'User-Agent': user_agent})
         _ = dictionary
+        self._ = dictionary
         if self.verbose:
             print('Using User-Agent [%s]' % user_agent)
 
@@ -215,3 +216,31 @@ class Sbanken(IBank):
         response = self.session.put('https://publicapi.sbanken.no/apibeta/api/v2/mailbox/archive/%s/readstatus' % id, headers=headers, data='{"status":1}')
         if self.print_raw_data:
             self.print_raw_response_if_applicable(response)
+
+
+    def do_transfer(self, from_account, to_account, amount, message):
+        headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+        if not message:
+            message = self._('transferred_by_teller') # TODO: validate message
+        message = self.get_valid_message(message)
+        transfer = {'fromAccountId': from_account, 'toAccountId': to_account, 'amount': amount, 'message': message}
+        if self.verbose:
+            print('Sending transfer %s...' % json.dumps(transfer))
+        response = self.session.post('https://publicapi.sbanken.no/apibeta/api/v2/transfers', headers=headers, data=json.dumps(transfer))
+        self.print_raw_response_if_applicable(response)
+        if response.status_code == 204:
+            return
+        else:
+            raise ApiException(response.status_code, response.text, response.headers, response.reason)
+
+    ALLOWED_CHARS = '1234567890aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXyYzZæÆøØåÅäÄëËïÏöÖüÜÿâÂêÊîÎôÔûÛãÃñÑõÕàÀèÈìÌòÒùÙáÁéÉíÍóÓýÝ,;.:!-/()? '
+    def get_valid_message(self, message):
+        if not message: # Won't happen
+            return 'Transferred by teller'
+        clean_message = ''
+        for l in message:
+            if l in self.ALLOWED_CHARS:
+                clean_message += l
+            else:
+                clean_message += ' '
+        return clean_message.strip()[:30]

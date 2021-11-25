@@ -516,7 +516,7 @@ class Teller(cmd.Cmd):
             row.add(Column(i + 1))
             row.add(Column(self.get_nice_date(efaktura['originalDueDate'])))
             row.add(Column(efaktura['issuerName']))
-            if efaktura['updatedAmount']:
+            if efaktura['updatedAmount'] and efaktura['updatedAmount'] != efaktura['originalAmount']:
                 row.add(Column('* ' + self.get_nice_amount(efaktura['updatedAmount'], True), justification='RIGHT'))
             else:
                 row.add(Column(self.get_nice_amount(efaktura['originalAmount'], True), justification='RIGHT'))
@@ -706,13 +706,65 @@ class Teller(cmd.Cmd):
 
     def do_mv(self, line):
         args = line.split()
-        print(args)
         if self.current_account is None:  # No specific account
-            if len(args) < 4:
+            if len(args) < 3:
                 print(_('mv_invalid_arguments_no_account_selected'))
+                return
             else:
-                pass
+                from_account_raw = args[0]
+                to_account_raw = args[1]
+                amount = args[2]
+                message = None
+                if len(args) > 3:
+                    message = ' '.join(args[3:])
+        else:
+            if len(args) < 2:
+                print(_('mv_invalid_arguments_account_selected'))
+                return
+            else:
+                from_account_raw = self.current_account['accountNumber']
+                to_account_raw = args[0]
+                amount = args[1]
+                message = None
+                if len(args) > 2:
+                    message = ' '.join(args[2:])
+        has_error = False
+        from_account = self.get_account_from_user_input(from_account_raw)
+        if from_account is None:
+            has_error = True
+            print(_('error_unknown_account', from_account_raw, error=True))
+        to_account = self.get_account_from_user_input(to_account_raw)
+        if to_account is None:
+            has_error = True
+            print(_('error_unknown_account', to_account_raw, error=True))
+        if from_account is not None and to_account is not None and from_account['accountId'] == to_account['accountId']:
+            print(_('error_from_and_to_account_cannot_be_the_same', error=True))
+            has_error = True
+        try:
+            amount = float(amount)
+        except ValueError:
+            try:
+                amount = float(amount.replace(',', '.'))
+            except ValueError:
+                print(_('error_failed_to_parse_amount', amount, error=True))
+        if not has_error:
+            self.bank.do_transfer(from_account['accountId'], to_account['accountId'], amount, message)
+            print(_('transfer_successful', self.get_nice_amount(amount, True), self.get_nice_account_no(from_account['name']), self.get_nice_account_no(to_account['name'])))
 
+
+    def get_account_from_user_input(self, input):
+        accountData = self.bank.get_account_data(ttl_hash=self.get_ttl_hash())
+        for i, account in enumerate(accountData['items']):
+            if account['accountNumber'] == input:
+                return account
+            if self.get_nice_account_no(account['accountNumber']) == input:
+                return account
+            if account['name'].lower() == input.lower():
+                return account
+            if input.isdigit and (i + 1) == int(input):
+                return account
+        return None
+        
     def complete_mv(self, text, line, begidx, endidx):
         complete = []
         #print('\ntext=[%s], line=[%s], begidx=[%s], endix=f[%s]' % (text, line, begidx, endidx))
@@ -721,7 +773,7 @@ class Teller(cmd.Cmd):
 
         return complete
 
-    def help_mv(self, line):
+    def help_mv(self):
         print(_('help_mv'))
 
     complete_dir = complete_ls
