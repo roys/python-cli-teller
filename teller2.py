@@ -811,7 +811,7 @@ class Teller(cmd.Cmd):
 
     def do_cat(self, line):
         if self.current_directory_type != 'mailbox' and self.current_directory_type != 'mailbox/archive':
-            print(_('unknown_destination'))
+            print(_('cat_only_works_inside_mailbox'))
             print(_('initial_help'))
             return
         self.print_message(line, is_inbox = self.current_directory_type == 'mailbox')
