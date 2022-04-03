@@ -4,23 +4,26 @@ from bank.exception import ApiException
 from table import *
 from colors import *
 from aescipher import AESCipher
-import argparse
 import cmd
 import configparser
 import datetime
 import dateutil.parser
 import getpass
+import argparse
 import locale
 import os
 import platform
+from datetime import date
 import requests
 import sys
 import time
 import traceback
 import re
 from html.parser import HTMLParser
+import shlex
 import readline
 import rlcompleter
+import debug
 if 'libedit' in readline.__doc__:
     readline.parse_and_bind("bind ^I rl_complete")
 else:
@@ -114,6 +117,9 @@ class Teller(cmd.Cmd):
         self.current_directory_type = 'top_level'
         self.current_account = None
         print(_('connecting_to_the_bank'))
+        acccess_token = self.bank.get_access_token()
+        if acccess_token is None:
+            exit()
         self.print_balances()
         self.set_prompt()
         self.aliases = {'dir': self.do_ls,
@@ -121,6 +127,8 @@ class Teller(cmd.Cmd):
                         'll': self.do_ls,
                         'type': self.do_cat,
                         'print': self.do_cat,
+                        'search': self.do_find,
+                        'grep': self.do_find,
                         'q': self.do_exit,
                         'quit': self.do_exit,
                         'w': self.do_whoami,
@@ -761,7 +769,7 @@ class Teller(cmd.Cmd):
                 return account
             if account['name'].lower() == input.lower():
                 return account
-            if input.isdigit and (i + 1) == int(input):
+            if input.isdigit() and (i + 1) == int(input):
                 return account
         return None
         
@@ -810,6 +818,148 @@ class Teller(cmd.Cmd):
 
     def help_cat(self):
         print(_('help_cat'))
+
+    def do_find(self, line):
+        if len(line) == 0:
+            print(_('help_find'))
+            return
+        args = shlex.split(line)
+        account_raw = None
+        start_date = None
+        end_date = None
+        if self.current_account is None:
+            if len(args) < 2:
+                print(_('help_find'))
+                return
+            account_raw = args[0]
+            search  = args[1]
+            if len(args) >= 3:
+                start_date  = args[2]
+            if len(args) >= 4:
+                end_date  = args[3]
+        else:
+            account_raw = self.current_account['accountNumber']
+            search  = args[0]
+            if len(args) >= 2:
+                start_date  = args[1]
+            if len(args) >= 3:
+                end_date  = args[2]
+        account = self.get_account_from_user_input(account_raw)
+        if account is None:
+            has_error = True
+            print(_('error_unknown_account', account_raw, error=True))
+        if start_date:
+            try:
+                start_date = dateutil.parser.parse(start_date, fuzzy=True)
+                start_date = start_date.strftime('%Y-%m-%d')
+            except ValueError:
+                pass
+        if end_date:
+            try:
+                end_date = dateutil.parser.parse(end_date, fuzzy=True)
+                end_date = end_date.strftime('%Y-%m-%d')
+            except ValueError:
+                pass
+        if start_date is not None and start_date != '' and end_date is not None and end_date != '':
+            if start_date > end_date:
+                temp = start_date
+                start_date = end_date
+                end_date = temp
+        if end_date is not None and end_date != '':
+            today = date.today().strftime('%Y-%m-%d')
+            if today < end_date:
+                end_date = None
+        if start_date is not None and start_date != '' and end_date is not None and end_date != '':
+            print(_('using_start_date_and_end_date', start_date, end_date))
+            print('')
+        elif start_date is not None and start_date != '':
+            print(_('using_start_date', start_date))
+            print('')
+        results = []
+        transactions = self.bank.get_transactions_data_by_search(account['accountId'], start_date, end_date, ttl_hash=self.get_ttl_hash())
+        if search is not None:
+            search = search.lower()
+        for transaction in transactions['items']:
+            if search is None or search in transaction['text'].lower() or search in transaction['transactionType'].lower() or search in self.get_nice_transaction_type(transaction['transactionType']).lower():
+                results.append(transaction)
+                
+        if search is None:
+            print(_('transactions_for', len(results), account['name'], self.get_nice_account_no(account['accountNumber'])))
+        else:
+            print(_('searching_transactions_for', search, account['name'], self.get_nice_account_no(account['accountNumber'])))
+
+        table = Table()
+        header_row = HeaderRow()
+        header_row.add(Column(_('accounting_date')))
+        header_row.add(Column(_('interest_date')))
+        header_row.add(Column(_('text'), min_width=61))
+        header_row.add(Column(_('amount')))
+        header_row.add(Column(_('type')))
+        table.add(header_row)
+        incomingAmount = 0
+        incomingCount = 0
+        outgoingAmount = 0
+        outgoingCount = 0
+        for payment in results:
+            amount = payment['amount']
+            row = Row()
+            row.add(Column(self.get_nice_date(payment['accountingDate'])))
+            row.add(Column(self.get_nice_date(payment['interestDate'])))
+            row.add(Column(payment['text']))
+            row.add(Column(self.get_nice_amount(amount), justification='RIGHT'))
+            row.add(Column(self.get_nice_transaction_type(payment['transactionType'])))
+            table.add(row)
+            if amount >= 0:
+                incomingAmount += amount
+                incomingCount += 1
+            else:
+                outgoingAmount += amount
+                outgoingCount += 1
+        totalCount = str(incomingCount + outgoingCount)
+        # Summary incoming
+        footer_row = FooterRow()
+        footer_row.add(Column())
+        footer_row.add(Column())
+        if incomingCount == 1:
+            footer_row.add(Column(_('incoming_transaction', str(incomingCount).rjust(len(totalCount)))))
+        else:
+            footer_row.add(Column(_('incoming_transactions', str(incomingCount).rjust(len(totalCount)))))
+        footer_row.add(Column(self.get_nice_amount(incomingAmount), justification='RIGHT'))
+        footer_row.add(Column())
+        table.add(footer_row)
+        # Summary outgoing
+        row = Row()
+        row.add(Column())
+        row.add(Column())
+        if outgoingCount == 1:
+            row.add(Column(_('outgoing_transaction', str(outgoingCount).rjust(len(totalCount)))))
+        else:
+            row.add(Column(_('outgoing_transactions', str(outgoingCount).rjust(len(totalCount)))))
+        row.add(Column(self.get_nice_amount(outgoingAmount), justification='RIGHT'))
+        row.add(Column())
+        table.add(row)
+        # Summary total
+        row = Row()
+        row.add(Column())
+        row.add(Column())
+        if totalCount == 1:
+            row.add(Column(_('total_transaction', totalCount)))
+        else:
+            row.add(Column(_('total_transactions', totalCount)))
+        row.add(Column(self.get_nice_amount(incomingAmount + outgoingAmount), justification='RIGHT'))
+        row.add(Column())
+        table.add(row)
+        print(table)
+
+    def complete_find(self, text, line, begidx, endidx):
+        #print(['text: [' + text + ']', 'line: [' + line + ']', 'begidx: [' + str(begidx) + ']', 'endidx: [' + str(endidx) + ']'])
+        complete = []
+        if self.current_account is None:
+            self.complete_accounts(complete, text)
+        return complete
+
+    def help_find(self):
+        print(_('help_find'))
 
     def do_exit(self, line='ok', c='c', d='d'):
         print(_('good_bye'))
@@ -862,6 +1012,7 @@ def get_user_agent():
 
 bank = None
 aesCipher = None
+debug.verbose = args.verbose
 
 if args.demo:
     bank = DemoBank()

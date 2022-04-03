@@ -6,7 +6,7 @@ import requests
 import time
 import urllib
 import json
-
+from debug import debug
 
 def _(key, *args, **kwargs):
     pass
@@ -25,10 +25,9 @@ class Sbanken(IBank):
         self.session = requests.Session()
         if user_agent is not None:
             self.session.headers.update({'User-Agent': user_agent})
+        global _
         _ = dictionary
-        self._ = dictionary
-        if self.verbose:
-            print('Using User-Agent [%s]' % user_agent)
+        debug(f'Using User-Agent [{user_agent}]')
 
     def get_id(self):
         return 'sbanken'
@@ -62,21 +61,19 @@ class Sbanken(IBank):
             if self.verbose:
                 print('Using existing access token that expires in ' + str(int((int(self.access_token_expiration) - time.time()) / 60)) + ' minutes.')
             return self.access_token
-        if self.verbose:
-            print('Getting a fresh access token.')
+        debug('Getting a fresh access token.')
         headers = {'Authorization': 'Basic ' + base64.b64encode((urllib.parse.quote_plus(self.client_id) + ':' + urllib.parse.quote_plus(self.client_secret)).encode('utf-8')).decode('utf-8'), 'Accept': 'application/json'}
         response = self.session.post('https://auth.sbanken.no/identityserver/connect/token', {'grant_type': 'client_credentials'}, headers=headers)
         self.print_raw_response_if_applicable(response)
         if response.status_code == 200:
             parsed = response.json()
-            if self.verbose:
-                print('Got scopes %s.' % parsed['scope'])
+            debug('Got scopes %s.' % parsed['scope'])
             self.access_token = str(parsed['access_token'])
             self.access_token_expiration = int(time.time()) + int(parsed['expires_in'])
             return self.access_token
         else:
             print()
-            print(_('error_failed_to_authenticate', response.status_code, response.content, error=True))
+            print(_('error_failed_to_authenticate', response.status_code, response.content.decode('utf-8'), error=True))
         return None
 
     @lru_cache(maxsize=1)
@@ -94,6 +91,16 @@ class Sbanken(IBank):
             print('Fetching transactions data for account [%s]...' % accountId)
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/transactions/%s' % accountId, headers=headers)
+        self.print_raw_response_if_applicable(response)
+        return response.json()
+
+    @lru_cache(maxsize=10)
+    def get_transactions_data_by_search(self, accountId, start_date, end_date, ttl_hash=None):
+        params = {'index': 0, 'length': 1000, 'startDate': start_date, 'endDate': end_date}
+        if self.verbose:
+            print('Fetching transactions data using params %s' % params)
+        headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
+        response = self.session.get('https://publicapi.sbanken.no/apibeta/api/v2/transactions/%s' % accountId, headers=headers, params=params)
         self.print_raw_response_if_applicable(response)
         return response.json()
 
@@ -221,7 +228,7 @@ class Sbanken(IBank):
     def do_transfer(self, from_account, to_account, amount, message):
         headers = {'Authorization': 'Bearer ' + self.get_access_token(), 'customerId': self.user_id, 'Accept': 'application/json', 'Content-Type': 'application/json-patch+json', }
         if not message:
-            message = self._('transferred_by_teller') # TODO: validate message
+            message = _('transferred_by_teller') # TODO: validate message
         message = self.get_valid_message(message)
         transfer = {'fromAccountId': from_account, 'toAccountId': to_account, 'amount': amount, 'message': message}
         if self.verbose:
