@@ -1,33 +1,38 @@
-from bank.sbanken import Sbanken
-from bank.demobank import DemoBank
-from bank.exception import ApiException
-from table import *
-from colors import *
-from aescipher import AESCipher
-import cmd
-import configparser
-import datetime
-import dateutil.parser
-import getpass
-import argparse
-import locale
-import os
-import platform
-from datetime import date
-import requests
-import sys
-import time
-import traceback
-import re
-from html.parser import HTMLParser
-import shlex
-import readline
-import rlcompleter
-import debug
-if 'libedit' in readline.__doc__:
-    readline.parse_and_bind("bind ^I rl_complete")
-else:
-    readline.parse_and_bind("tab: complete")
+try:
+    from bank.sbanken import Sbanken
+    from bank.demobank import DemoBank
+    from bank.exception import ApiException
+    from table import *
+    from colors import *
+    from aescipher import AESCipher
+    import cmd
+    import configparser
+    import datetime
+    import dateutil.parser
+    import getpass
+    import argparse
+    import locale
+    import os
+    import platform
+    from datetime import date
+    import requests
+    import sys
+    import time
+    import traceback
+    import re
+    from html.parser import HTMLParser
+    import shlex
+    import readline
+    import rlcompleter
+    import debug
+    if 'libedit' in readline.__doc__:
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+except ModuleNotFoundError as e:
+    print(f"Unable to run program: {e.msg}")
+    print("\nInstall requirements using the following command:\npython3 -m pip install -r requirements.txt\n")
+    exit(0)
 
 """
 TODO:
@@ -1007,7 +1012,7 @@ def printPleaseWait():
 
 
 def get_user_agent():
-    return 'teller/' + __version__ + ' (' + platform.system() + ' ' + platform.release() + ') Python/' + platform.python_version() + ' python-requests/' + requests.__version__
+    return 'teller/' + __version__ + ' (' + platform.system() + ' ' + platform.release() + ') Python/' + platform.python_version() + f' python-requests/{requests.__version__} github.com/roys/python-cli-teller'
 
 
 bank = None
@@ -1017,8 +1022,8 @@ debug.verbose = args.verbose
 if args.demo:
     bank = DemoBank()
 else:
-    bank = Sbanken()
-    firstRun = not config.has_section(bank.get_id()) or args.reset
+    bank_id = Sbanken.get_id()
+    firstRun = not config.has_section(bank_id) or args.reset
     access_token = None
     access_token_expiration = None
     if firstRun:
@@ -1048,24 +1053,27 @@ else:
             print(_('invalid_user_id'))
         if isInputValid:
             if len(password) >= 6:
-                config.add_section(bank.get_id())
+                config.add_section(bank_id)
                 aesCipher = AESCipher(password)
-                config.set(bank.get_id(), 'clientId', aesCipher.encrypt(client_id))
-                config.set(bank.get_id(), 'clientSecret', aesCipher.encrypt(client_secret))
-                config.set(bank.get_id(), 'userId', aesCipher.encrypt(user_id))
+                config.set(bank_id, 'clientId', aesCipher.encrypt(client_id))
+                config.set(bank_id, 'clientSecret', aesCipher.encrypt(client_secret))
+                config.set(bank_id, 'userId', aesCipher.encrypt(user_id))
                 storeConfig()
         else:
             exit()
     else:
-        password = getpass.getpass(_('enter_password_2'))
+        try:
+            password = getpass.getpass(_('enter_password_2'))
+        except (EOFError, KeyboardInterrupt):
+            exit()
         aesCipher = AESCipher(password)
         try:
-            client_id = aesCipher.decrypt(config.get(bank.get_id(), 'clientId'))
-            client_secret = aesCipher.decrypt(config.get(bank.get_id(), 'clientSecret'))
-            user_id = aesCipher.decrypt(config.get(bank.get_id(), 'userId'))
-            if(config.has_option(bank.get_id(), 'accessToken') and config.has_option(bank.get_id(), 'accessTokenExpiration')):
-                access_token = aesCipher.decrypt(config.get(bank.get_id(), 'accessToken'))
-                access_token_expiration = int(aesCipher.decrypt(config.get(bank.get_id(), 'accessTokenExpiration')))
+            client_id = aesCipher.decrypt(config.get(bank_id, 'clientId'))
+            client_secret = aesCipher.decrypt(config.get(bank_id, 'clientSecret'))
+            user_id = aesCipher.decrypt(config.get(bank_id, 'userId'))
+            if(config.has_option(bank_id, 'accessToken') and config.has_option(bank_id, 'accessTokenExpiration')):
+                access_token = aesCipher.decrypt(config.get(bank_id, 'accessToken'))
+                access_token_expiration = int(aesCipher.decrypt(config.get(bank_id, 'accessTokenExpiration')))
                 if int(time.time()) >= access_token_expiration:
                     access_token = None
                     access_token_expiration = None
@@ -1073,7 +1081,7 @@ else:
             print(_('error_failed_to_decrypt_token', error=True))
             printShortHelp()
             exit()
-    bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, get_user_agent(), _, args.verbose, args.raw)
+    bank = Sbanken(client_id, client_secret, user_id, access_token, access_token_expiration, user_agent = get_user_agent(), dictionary = _, verbose = args.verbose, print_raw_data = args.raw)
 
 if __name__ == '__main__':
     try:

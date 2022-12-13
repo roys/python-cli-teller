@@ -1,4 +1,6 @@
 # Requirements file for pip install
+# Run with the following command to install requirements:
+# python3 -m pip install -r requirements.txt
 requests==2.25.1
 pycryptodome==3.9.9
 python_dateutil==2.8.1

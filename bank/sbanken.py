@@ -29,7 +29,8 @@ class Sbanken(IBank):
         _ = dictionary
         debug(f'Using User-Agent [{user_agent}]')
 
-    def get_id(self):
+    @staticmethod
+    def get_id():
         return 'sbanken'
 
     def get_name(self):
@@ -72,6 +73,7 @@ class Sbanken(IBank):
             self.access_token_expiration = int(time.time()) + int(parsed['expires_in'])
             return self.access_token
         else:
+            # TODO: Add info that {"error":"invalid_client"} means that user probably have to set up client again
             print()
             print(_('error_failed_to_authenticate', response.status_code, response.content.decode('utf-8'), error=True))
         return None
