@@ -1,4 +1,4 @@
 # Requirements file for pip install
-requests==2.21.0
+requests==2.31.0
 pycryptodomex==3.8.0
 python_dateutil==2.6.1
